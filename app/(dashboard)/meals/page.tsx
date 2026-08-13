@@ -3,6 +3,8 @@ import { SectionTitle } from "@/components/ui";
 import MealsManager from "@/components/meals-manager";
 
 export const dynamic = "force-dynamic";
+// 提交饮食时同步调用 AI 估算营养, 留出余量避免 Vercel 函数超时
+export const maxDuration = 30;
 
 export default async function MealsPage() {
   const { supabase } = await getCurrentUser();

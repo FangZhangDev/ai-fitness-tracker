@@ -3,6 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/utils/server";
 import { toCSV, toExcel, toJSON, type Row } from "@/lib/utils/export";
 
+// 导出 Excel 时 exceljs 需在内存中生成工作簿, 数据量大时较慢
+export const maxDuration = 30;
+
 const TABLES = {
   daily_metrics: "daily_metrics",
   meal_logs: "meal_logs",
