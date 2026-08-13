@@ -14,6 +14,7 @@ const NAV = [
 ];
 
 const SECONDARY = [
+  { href: "/plan", label: "训练计划" },
   { href: "/profile", label: "个人资料" },
   { href: "/export", label: "数据导出" },
 ];

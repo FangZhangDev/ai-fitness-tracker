@@ -134,6 +134,83 @@ export type AiAnalysisReport = {
   raw_context?: Json; // 喂给 AI 的上下文摘要 (可选)
 };
 
+// ---- 训练计划 (见 supabase/migrations/0002_workout_plans.sql) ----
+
+/** 1=周一 ... 7=周日, 与 date-fns 的 ISO weekday 一致 */
+export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export const WEEKDAY_LABEL: Record<Weekday, string> = {
+  1: "周一",
+  2: "周二",
+  3: "周三",
+  4: "周四",
+  5: "周五",
+  6: "周六",
+  7: "周日",
+};
+
+export type WorkoutPlan = {
+  id: string;
+  user_id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlanDay = {
+  id: string;
+  plan_id: string;
+  user_id: string;
+  weekday: Weekday;
+  title: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlanExercise = {
+  id: string;
+  day_id: string;
+  user_id: string;
+  exercise: string;
+  target_sets: number | null;
+  rep_min: number | null;
+  rep_max: number | null;
+  rir_min: number | null;
+  rir_max: number | null;
+  rest: string | null;
+  cues: string | null;
+  equipment: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlanExerciseUpdate = Partial<
+  Omit<PlanExercise, "id" | "user_id" | "day_id" | "created_at" | "updated_at">
+>;
+
+/** AI 解析计划文本后的中间结构 (尚未落库, 供用户在前端确认) */
+export type ParsedPlan = {
+  name: string;
+  days: Array<{
+    weekday: Weekday;
+    title: string;
+    exercises: Array<{
+      exercise: string;
+      target_sets: number | null;
+      rep_min: number | null;
+      rep_max: number | null;
+      rir_min: number | null;
+      rir_max: number | null;
+      rest: string | null;
+      cues: string | null;
+      equipment: string | null;
+    }>;
+  }>;
+};
+
 // ---- 视图类型 ----
 export type ExercisePR = {
   user_id: string;
@@ -153,6 +230,17 @@ export type DailyNutrition = {
   unanalyzed_count: number;
 };
 
+/** 每个动作最近一次记录, 用于从计划快速记录时预填上次重量 */
+export type ExerciseLast = {
+  user_id: string;
+  exercise: string;
+  last_date: string;
+  last_weight_kg: number | null;
+  last_sets: number | null;
+  last_reps: number | null;
+  last_rir: number | null;
+};
+
 // ---- Supabase Database schema 映射 (用于 createClient 泛型) ----
 export type Database = {
   public: {
@@ -162,12 +250,19 @@ export type Database = {
       meal_logs: { Row: MealLog; Insert: MealLogInsert; Update: MealLogUpdate; Relationships: [] };
       workout_logs: { Row: WorkoutLog; Insert: WorkoutLogInsert; Update: WorkoutLogUpdate; Relationships: [] };
       ai_analyses: { Row: AiAnalysis; Insert: Omit<AiAnalysis, "id" | "created_at">; Update: Partial<AiAnalysis>; Relationships: [] };
+      workout_plans: { Row: WorkoutPlan; Insert: Omit<WorkoutPlan, "id" | "created_at" | "updated_at">; Update: Partial<WorkoutPlan>; Relationships: [] };
+      plan_days: { Row: PlanDay; Insert: Omit<PlanDay, "id" | "created_at" | "updated_at">; Update: Partial<PlanDay>; Relationships: [] };
+      plan_exercises: { Row: PlanExercise; Insert: Omit<PlanExercise, "id" | "created_at" | "updated_at">; Update: PlanExerciseUpdate; Relationships: [] };
     };
     Views: {
       v_exercise_pr: { Row: ExercisePR; Relationships: [] };
       v_daily_nutrition: { Row: DailyNutrition; Relationships: [] };
+      v_exercise_last: { Row: ExerciseLast; Relationships: [] };
     };
-    Functions: Record<string, never>;
+    Functions: {
+      // 原子地切换启用中的计划, 见 0002 迁移
+      activate_plan: { Args: { p_plan_id: string }; Returns: undefined };
+    };
     Enums: { meal_type: MealType; activity_level: ActivityLevel };
     CompositeTypes: Record<string, never>;
   };

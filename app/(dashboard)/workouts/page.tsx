@@ -4,13 +4,22 @@ import { r2 } from "@/lib/utils/pr";
 import { SectionTitle, Card, EmptyState } from "@/components/ui";
 import WorkoutsManager from "@/components/workouts-manager";
 import StrengthChartSelector from "@/components/strength-chart-selector";
+import TodayPlanLogger from "@/components/today-plan-logger";
+import type { ExerciseLast, PlanDay, PlanExercise, Weekday } from "@/lib/types/database";
 
 export const dynamic = "force-dynamic";
 
+/** 今天是周几 (1=周一 ... 7=周日); JS 的 getDay() 里周日是 0, 这里换算成 ISO */
+function todayWeekday(): Weekday {
+  const d = new Date().getDay();
+  return (d === 0 ? 7 : d) as Weekday;
+}
+
 export default async function WorkoutsPage() {
   const { supabase } = await getCurrentUser();
+  const weekday = todayWeekday();
 
-  const [list, prs, recent] = await Promise.all([
+  const [list, prs, recent, activePlan, lastLogs] = await Promise.all([
     supabase.from("workout_logs").select("*").order("date", { ascending: false }).limit(100),
     supabase.from("v_exercise_pr").select("*").order("exercise", { ascending: true }),
     supabase
@@ -18,11 +27,45 @@ export default async function WorkoutsPage() {
       .select("date,exercise,weight_kg,reps")
       .gte("date", daysAgoISO(89))
       .order("date", { ascending: true }),
+    supabase.from("workout_plans").select("id").eq("is_active", true).maybeSingle(),
+    supabase.from("v_exercise_last").select("*"),
   ]);
+
+  // 取出启用计划里对应今天的训练日与动作
+  let day: PlanDay | null = null;
+  let planExercises: PlanExercise[] = [];
+  if (activePlan.data) {
+    const { data: d } = await supabase
+      .from("plan_days")
+      .select("*")
+      .eq("plan_id", activePlan.data.id)
+      .eq("weekday", weekday)
+      .maybeSingle();
+    day = d ?? null;
+    if (day) {
+      const { data: ex } = await supabase
+        .from("plan_exercises")
+        .select("*")
+        .eq("day_id", day.id)
+        .order("sort_order");
+      planExercises = ex ?? [];
+    }
+  }
+
+  const lastByExercise: Record<string, ExerciseLast> = {};
+  for (const l of lastLogs.data ?? []) lastByExercise[l.exercise] = l;
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="训练记录" desc="记录每次训练，自动追踪 PR 与力量增长" />
+      <SectionTitle title="训练记录" desc="按当天计划快速记录，自动追踪 PR 与力量增长" />
+
+      <TodayPlanLogger
+        weekday={weekday}
+        day={day}
+        exercises={planExercises}
+        lastByExercise={lastByExercise}
+        hasActivePlan={!!activePlan.data}
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-4">
