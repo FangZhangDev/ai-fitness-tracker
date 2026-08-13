@@ -14,23 +14,30 @@ export default function MealsManager({ list }: { list: MealLog[] }) {
     <div className="space-y-4">
       <Card className="p-4">
         <div className="mb-2 text-sm text-neutral-500">
-          💡 只需用自然语言描述食物，AI 会自动估算卡路里与三大营养素
+          💡 用自然语言描述就行，AI 会自动估算卡路里与三大营养素。
+          默认「全天」——把今天吃的一次性写完最省事，不用一餐餐分开录。
         </div>
         <form action={formAction} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3">
             <Field label="日期">
               <input name="date" type="date" defaultValue={todayISO()} className="input" required />
             </Field>
-            <Field label="餐次">
-              <select name="meal_type" defaultValue="breakfast" className="input">
+            <Field label="餐次" hint="想单独记某一餐再改这里">
+              <select name="meal_type" defaultValue="all_day" className="input">
                 {Object.entries(MEAL_TYPE_LABEL).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
               </select>
             </Field>
-            <div className="col-span-2 md:col-span-2">
-              <Field label="食物描述">
-                <input name="description" className="input" placeholder="如：三个鸡蛋，一个肉包，一碗豆浆" required />
+            <div className="col-span-2">
+              <Field label="吃了什么">
+                <textarea
+                  name="description"
+                  rows={3}
+                  className="input"
+                  placeholder="早上三个鸡蛋一个肉包一碗豆浆，中午两碗米饭一份红烧肉一份青菜，下午一个苹果一杯蛋白粉，晚上一碗面条加两个荷包蛋"
+                  required
+                />
               </Field>
             </div>
           </div>

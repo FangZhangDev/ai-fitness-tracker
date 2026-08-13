@@ -128,6 +128,7 @@ export function LinkButton({
 
 // 餐次中文标签映射
 export const MEAL_TYPE_LABEL: Record<string, string> = {
+  all_day: "全天",
   breakfast: "早餐",
   lunch: "午餐",
   dinner: "晚餐",

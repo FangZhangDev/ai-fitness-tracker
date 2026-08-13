@@ -13,7 +13,8 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
+/** all_day = 一次记录一整天吃的, 交给 AI 估算全天总量 (默认) */
+export type MealType = "all_day" | "breakfast" | "lunch" | "dinner" | "snack";
 
 export type ActivityLevel =
   | "sedentary"
