@@ -28,10 +28,30 @@ Next.js 16 的原生 SWC 二进制要求 `GLIBC_2.29`，本机只有 2.28，
 > 解压出来的 `node_modules` 已损坏（zip 把 npm 的符号链接压平成普通文件，
 > 相对 `require` 全断），已删除并用 `npm ci` 重装。以后别从 zip 里带 node_modules。
 
+## Node 来源（注册表未覆盖）
+
+`registryctl resolve node/npm/npx` 全部返回「未在注册表中找到」——注册表只扫
+`/data/software/miniconda3`、`/data/software/miniforge3_zf`、`/data/software/*`，
+这三处都没有 node。全机唯一的 Node 是 nvm 装的：
+
+```
+/datb/home/zhangfang/.nvm/versions/node/v22.18.0/bin/{node,npm,npx}   # v22.18.0
+```
+
+**坑：`npm` 的 shebang 是 `#!/usr/bin/env node`**，所以即使写 npm 的绝对路径，
+只要 PATH 里没有 node 一样会报 `env: 'node': No such file or directory`。
+nvm 是靠 `~/.bashrc` 注入 PATH 的，**cron / systemd / 非登录 shell 里都没有**。
+写自启脚本时必须显式加 PATH：
+
+```bash
+export PATH=/datb/home/zhangfang/.nvm/versions/node/v22.18.0/bin:$PATH
+```
+
 ## 启动
 
 ```bash
 cd /datb/home/zhangfang/Project/00_OLD_DOCS/fzg_proj/ai-fitness/ai-fitness-tracker
+export PATH=/datb/home/zhangfang/.nvm/versions/node/v22.18.0/bin:$PATH
 npm run build          # 首次 / 改代码后
 nohup npm run start > /tmp/fitness.log 2>&1 &
 ```
