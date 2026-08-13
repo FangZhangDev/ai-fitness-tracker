@@ -166,7 +166,29 @@ AI 推理在 DeepSeek 云。这台服务器只负责渲染页面和转发 API �
 | `app/(dashboard)/meals/page.tsx` | 30s | 提交饮食时同步估算营养 |
 | `app/api/export/route.ts` | 30s | exceljs 内存生成工作簿 |
 
-## 部署步骤
+## 已上线
+
+**<https://ai-fitness-tracker-fzg002s-projects.vercel.app>**（2026-08-13）
+
+- Vercel scope `fzg002s-projects`，项目 `ai-fitness-tracker`
+- 15 个环境变量已写入 production / preview / development
+- 函数实跑在 `hnd1`（东京），响应头 `x-vercel-id: hnd1::...` 实测确认。
+  项目设置里的默认区域是 `iad1`，被 `vercel.json` 覆盖了
+- Vercel 默认开启的 Deployment Protection **已关闭**——开着的话所有 `.vercel.app`
+  地址都会 302 跳 Vercel 登录页，手机上用不了
+
+以后改完代码重新部署：
+
+```bash
+cd /datb/home/zhangfang/Project/00_OLD_DOCS/fzg_proj/ai-fitness/ai-fitness-tracker
+export PATH=/datb/home/zhangfang/.nvm/versions/node/v22.18.0/bin:$PATH
+vercel --prod
+```
+
+> 注意：这台服务器上的代码是**唯一一份**，GitHub 不可达所以没有远程备份。
+> 建议找机会在能上 GitHub 的机器上推一个私有仓库。
+
+## 部署步骤（首次，留作参考）
 
 ### 1. 登录（二选一）
 
