@@ -71,7 +71,7 @@ function ImportForm({ onParsed }: { onParsed: (p: ParsedPlan) => void }) {
     <form action={formAction} className="space-y-3">
       <Field
         label="粘贴你的训练计划"
-        hint="Markdown 表格、纯文本列表都行。要写清每天练什么、动作、组数×次数，RIR / 休息 / 要点 / 器材有就一起贴上。"
+        hint="Markdown 表格、纯文本列表都行。也可以把 ChatGPT / Claude 给你的回复整段粘进来——多余的分析文字会被自动忽略，只提取计划部分。"
       >
         <textarea
           name="text"

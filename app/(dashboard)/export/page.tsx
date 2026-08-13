@@ -1,4 +1,5 @@
 import { SectionTitle, Card } from "@/components/ui";
+import BundleExport from "@/components/bundle-export";
 
 const TABLES = [
   { key: "daily_metrics", label: "身体记录" },
@@ -16,7 +17,11 @@ const FORMATS = [
 export default function ExportPage() {
   return (
     <div className="space-y-4">
-      <SectionTitle title="数据导出" desc="导出为 CSV / Excel / JSON，便于备份或交给其他 AI 分析" />
+      <SectionTitle title="数据导出" desc="一键打包给其他 AI 分析，或按表导出做备份" />
+
+      <BundleExport />
+
+      <div className="pt-2 text-sm font-medium">按表导出</div>
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
           <thead>
