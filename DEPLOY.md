@@ -65,6 +65,25 @@ nohup npm run start > /tmp/fitness.log 2>&1 &
 curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/login
 ```
 
+## 端到端验证记录（2026-08-13，已全部通过）
+
+用真实注册的测试账号跑通全链路，测试数据已删除：
+
+| 检查项 | 结果 |
+|---|---|
+| Publishable key 有效 | ✅ |
+| 5 张表 + 2 个视图已建 | ✅ profiles / daily_metrics / meal_logs / workout_logs / ai_analyses / v_daily_nutrition / v_exercise_pr |
+| `mailer_autoconfirm` | ✅ True（注册即返回 session，不需邮件确认）|
+| `handle_new_user` 触发器 | ✅ 注册后 profiles 自动建档 |
+| RLS 正向（写自己的行）| ✅ 201 |
+| RLS 反向（伪造他人 user_id）| ✅ 403 `new row violates row-level security policy` |
+| `v_exercise_pr` Epley 1RM | ✅ 80kg×8 → 101.33，等于 80×(1+8/30) |
+| 应用 `/login` / 路由保护 | ✅ 200 / 307 |
+| DeepSeek 分析调用 | ✅ 4.7–6.6s |
+
+**待办**：控制台删掉测试账号 `claude-e2e-test@example.com`
+（Authentication → Users），删用户会级联删掉它的 profiles 行。
+
 ## 仍需手动配置（阻塞项）
 
 ### 1. Supabase anon key（必须）
