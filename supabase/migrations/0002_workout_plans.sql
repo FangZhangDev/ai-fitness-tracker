@@ -23,6 +23,7 @@ create table if not exists public.workout_plans (
 create index if not exists idx_workout_plans_user
   on public.workout_plans (user_id, is_active desc, created_at desc);
 
+drop trigger if exists trg_workout_plans_updated_at on public.workout_plans;
 create trigger trg_workout_plans_updated_at
   before update on public.workout_plans
   for each row execute function public.set_updated_at();
@@ -45,6 +46,7 @@ create table if not exists public.plan_days (
 create index if not exists idx_plan_days_plan
   on public.plan_days (plan_id, weekday);
 
+drop trigger if exists trg_plan_days_updated_at on public.plan_days;
 create trigger trg_plan_days_updated_at
   before update on public.plan_days
   for each row execute function public.set_updated_at();
@@ -74,6 +76,7 @@ create table if not exists public.plan_exercises (
 create index if not exists idx_plan_exercises_day
   on public.plan_exercises (day_id, sort_order);
 
+drop trigger if exists trg_plan_exercises_updated_at on public.plan_exercises;
 create trigger trg_plan_exercises_updated_at
   before update on public.plan_exercises
   for each row execute function public.set_updated_at();
@@ -137,12 +140,15 @@ alter table public.workout_plans   enable row level security;
 alter table public.plan_days       enable row level security;
 alter table public.plan_exercises  enable row level security;
 
+drop policy if exists "wp_all_own" on public.workout_plans;
 create policy "wp_all_own" on public.workout_plans
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "pd_all_own" on public.plan_days;
 create policy "pd_all_own" on public.plan_days
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "pe_all_own" on public.plan_exercises;
 create policy "pe_all_own" on public.plan_exercises
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
