@@ -109,8 +109,97 @@ Supabase 控制台 → SQL Editor → 粘贴执行 `supabase/migrations/0001_ini
 AI 推理在 DeepSeek 云。这台服务器只负责渲染页面和转发 API 调用。
 所以「部署在实验室服务器」并不等于「数据留在内网」。
 
-## 手机访问
+## 手机访问（服务器方案，仅作临时测试）
 
 手机 aTrust 连浙大 VPN → 浏览器打开 `http://10.39.15.143:3000`
 
 注意 IP 是 DHCP 动态分配的，服务器重启后可能变，届时用 `ip -4 addr show ens13f0` 重新确认。
+
+---
+
+# 正式方案：部署到 Vercel
+
+项目本来就是奔着 Vercel 设计的（README 技术栈那行、`.gitignore` 里的 `.vercel`）。
+
+## 网络前提（已实测）
+
+| 目标 | 直连 | 代理 |
+|---|---|---|
+| vercel.com / api.vercel.com | ✅ 200 / 308 | — |
+| registry.npmjs.org | ✅ 200 | — |
+| supabase.co / api.deepseek.com | ✅ | — |
+| **github.com / api.github.com** | ❌ 超时 | ❌ 超时 |
+
+**GitHub 从这台服务器完全不通**（`127.0.0.1:10809` 端口在监听，但上游是死的，
+连 google.com 都失败）。所以 README 里「推送到 GitHub → Vercel 导入仓库」那条路走不通。
+
+**改用 Vercel CLI 直传**，不经过 GitHub。CLI 已全局安装：`vercel 58.11.0`。
+
+## 超时配置（已处理）
+
+实测 DeepSeek 分析 7 天数据耗时 **5.0 / 6.6 / 4.7 秒**（prompt 1880 tok，completion ~600 tok）。
+而 `runAnalysis` 允许区间到 90 天，耗时会显著上升。已按 Next 官方文档
+（Server Action 的超时设在所在 page）声明：
+
+| 位置 | maxDuration | 原因 |
+|---|---|---|
+| `app/(dashboard)/analysis/page.tsx` | 60s | AI 综合分析，Hobby 上限 |
+| `app/(dashboard)/meals/page.tsx` | 30s | 提交饮食时同步估算营养 |
+| `app/api/export/route.ts` | 30s | exceljs 内存生成工作簿 |
+
+## 部署步骤
+
+### 1. 登录（二选一）
+
+在 Claude Code 里用 `!` 前缀跑交互式登录，输出会回到会话里：
+
+```
+! vercel login
+```
+
+或者去 <https://vercel.com/account/tokens> 建一个 token，然后所有命令加 `--token=xxx`。
+
+### 2. 首次部署（预览环境）
+
+```bash
+cd /datb/home/zhangfang/Project/00_OLD_DOCS/fzg_proj/ai-fitness/ai-fitness-tracker
+export PATH=/datb/home/zhangfang/.nvm/versions/node/v22.18.0/bin:$PATH
+vercel            # 交互式创建项目, 一路默认即可
+```
+
+`.env.local` 被 `.gitignore` 覆盖，**不会上传**，环境变量要单独设。
+
+### 3. 设置环境变量
+
+```bash
+for e in production preview development; do
+  vercel env add NEXT_PUBLIC_SUPABASE_URL      $e
+  vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY $e
+  vercel env add AI_BASE_URL                   $e
+  vercel env add AI_API_KEY                    $e
+  vercel env add AI_MODEL                      $e
+done
+```
+
+值取自 `.env.local`。也可以在网页控制台 Settings → Environment Variables 批量粘贴。
+
+### 4. 正式部署
+
+```bash
+vercel --prod
+```
+
+### 5. 回填 Supabase 回调地址
+
+拿到 Vercel 域名后，去 Supabase → **Authentication → URL Configuration**：
+- Site URL 改成 `https://<你的项目>.vercel.app`
+- Redirect URLs 加上 `https://<你的项目>.vercel.app/auth/callback`
+
+否则邮箱确认 / 密码重置的链接会跳回错误地址。
+
+## 已知风险
+
+- `vercel.app` 域名在国内访问不稳定，手机可能需要偶尔重试。有自己的域名可以在
+  Vercel 绑定 Custom Domain 缓解。
+- Vercel 构建机 glibc 是新的，本可以用 Turbopack；但 `build` 脚本统一留了 `--webpack`，
+  两边行为一致、可复现，代价只是构建慢几十秒。
