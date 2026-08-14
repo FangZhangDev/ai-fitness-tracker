@@ -151,7 +151,7 @@
 
       sync
         .loadToday(self.token, self.weekday, function (payload, fromCache) {
-          self.render(payload)
+          self.applyPlan(payload)
           if (fromCache) self.banner = '离线数据'
         })
         .then(function () {
@@ -162,7 +162,7 @@
               self.banner = '已补传 ' + n + ' 条'
               // 补传后服务端状态变了, 重新拉一次
               return api.getToday(self.token, self.weekday).then(function (p) {
-                self.render(p)
+                self.applyPlan(p)
               })
             }
           })
@@ -190,12 +190,12 @@
         })
     },
 
-    render(payload) {
+    applyPlan(payload) {
       if (!payload) return
       // 分步日志: 渲染链路上任何一步抛 not a function 都能立刻定位
       try {
         const list = payload.exercises || []
-        console.log('[today] render 动作数=' + list.length)
+        console.log('[today] applyPlan 动作数=' + list.length)
 
         for (let i = 0; i < list.length; i++) {
           list[i].subtitle = buildSubtitle(list[i])
@@ -214,9 +214,9 @@
         this.barWidth = this.totalCount
           ? Math.round((386 * this.doneCount) / this.totalCount)
           : 0
-        console.log('[today] render 完成')
+        console.log('[today] applyPlan 完成')
       } catch (e) {
-        console.log('[today] render 异常: ' + e + ' | stack=' + (e && e.stack))
+        console.log('[today] applyPlan 异常: ' + e + ' | stack=' + (e && e.stack))
         throw e
       }
     },
