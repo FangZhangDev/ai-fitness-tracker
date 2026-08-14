@@ -222,3 +222,69 @@ export function isUnpaired(err) {
   const m = String(err.message)
   return m.indexOf('unpaired') >= 0 || m.indexOf('invalid token') >= 0
 }
+
+/**
+ * 网络自检 —— 真机上没有别的手段判断「到底哪一层不通」。
+ * 依次打三个地址, 结果拼成一行返回:
+ *   http:200   基础网络与明文 HTTP 通
+ *   https:200  TLS 也通
+ *   db:401     目标域名可达(未带 apikey 返回 401 属正常)
+ * 出现 E<code> 即该项失败, 对照可判断是完全没网 / TLS 不通 / 仅目标域名不通。
+ */
+export function selfTest() {
+  const f = getFetch()
+  if (!f) return Promise.resolve('fetch模块不可用')
+
+  const targets = [
+    ['http', 'http://www.baidu.com'],
+    ['https', 'https://www.baidu.com'],
+    ['db', CONFIG.SUPABASE_URL + '/rest/v1/'],
+  ]
+  const out = []
+
+  function step(i) {
+    if (i >= targets.length) return Promise.resolve(out.join('  '))
+    return new Promise(function (resolve) {
+      let done = false
+      const guard = setTimeout(function () {
+        if (!done) {
+          done = true
+          out.push(targets[i][0] + ':超时')
+          resolve()
+        }
+      }, 9000)
+      try {
+        f({
+          url: targets[i][1],
+          method: 'GET',
+          responseType: 'text',
+          timeout: 8000,
+          success: function (res) {
+            if (done) return
+            done = true
+            clearTimeout(guard)
+            out.push(targets[i][0] + ':' + res.code)
+            resolve()
+          },
+          fail: function (d, c) {
+            if (done) return
+            done = true
+            clearTimeout(guard)
+            out.push(targets[i][0] + ':E' + c)
+            resolve()
+          },
+        })
+      } catch (e) {
+        if (!done) {
+          done = true
+          clearTimeout(guard)
+          out.push(targets[i][0] + ':异常')
+          resolve()
+        }
+      }
+    }).then(function () {
+      return step(i + 1)
+    })
+  }
+  return step(0)
+}

@@ -3,10 +3,10 @@
     class="page"
     id="root"
     focusable="true"
-    rotation-sensitivity="2"
+    rotation-sensitivity="1"
     @rotation="onRotation"
   >
-    <text class="title">输入配对码</text>
+    <text class="title" onlongpress="netTest">输入配对码</text>
     <text class="sub">网页「手表」页生成</text>
 
     <!-- 6 位数字: 转表冠改当前位, 点击切换位 -->
@@ -28,6 +28,10 @@
   import * as api from '../../common/api.js'
   import * as store from '../../common/store.js'
   import * as device from '../../common/device.js'
+
+  // 表冠节流: 攒够这么多步进才跳一格, 数值越大越迟钝
+  const ROTATE_STEP = 3
+  let rotateAcc = 0
 
   export default {
     // 蓝河只认 data —— private/protected/public 在真机上不生效,
@@ -69,12 +73,22 @@
       this.cells = list
     },
 
-    /** 转表冠: 0-9 循环 */
+    /**
+     * 转表冠: 0-9 循环
+     * 每来一个事件就跳一格会过于灵敏, 手一抖就冲过头。这里累积旋转量,
+     * 攒够 ROTATE_STEP 才动一格; 计数放模块级变量, 不进 data(不参与渲染)。
+     */
     onRotation(e) {
       if (!e || e.state === 3) return
       let d = e.delta
       if (!d) d = e.direction ? -1 : 1
-      const dir = d > 0 ? 1 : -1
+
+      // 反向时立即清零, 免得残留的反向累积让第一下没反应
+      if ((d > 0) !== (rotateAcc > 0)) rotateAcc = 0
+      rotateAcc += d
+      if (Math.abs(rotateAcc) < ROTATE_STEP) return
+      const dir = rotateAcc > 0 ? 1 : -1
+      rotateAcc = 0
 
       let v = this.digits[this.idx] + dir
       if (v > 9) v = 0
@@ -86,6 +100,15 @@
     pick(i) {
       this.idx = i
       this.refresh()
+    },
+
+    /** 长按标题触发: 网络自检, 结果直接显示在错误区 */
+    netTest() {
+      const self = this
+      self.err = '自检中…'
+      api.selfTest().then(function (txt) {
+        self.err = txt
+      })
     },
 
     setBusy(v) {
