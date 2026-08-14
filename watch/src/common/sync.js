@@ -29,7 +29,9 @@ export function todayWeekday() {
  */
 export function flushPending(token) {
   if (!token) return Promise.resolve(0)
+  console.log('[sync] flushPending 开始')
   return store.getPending().then(function (list) {
+    console.log('[sync] 待补传 ' + (list ? list.length : 0) + ' 条')
     if (!list.length) return 0
     return api
       .submitLogs(token, list)
@@ -57,21 +59,36 @@ export function flushPending(token) {
  */
 export function loadToday(token, weekday, onData) {
   const wd = weekday === undefined ? null : weekday
+  console.log('[sync] loadToday 开始 wd=' + wd)
 
   // 1) 缓存优先渲染 (仅当缓存的是同一个训练日)
-  const cachePhase = store.getCache().then(function (c) {
-    if (c && c.payload && (wd === null || c.weekday === wd)) {
-      onData(c.payload, true)
-      return true
-    }
-    return false
-  })
+  const cachePhase = store
+    .getCache()
+    .then(function (c) {
+      console.log('[sync] 缓存阶段 hit=' + !!(c && c.payload))
+      if (c && c.payload && (wd === null || c.weekday === wd)) {
+        onData(c.payload, true)
+        return true
+      }
+      return false
+    })
+    .catch(function (e) {
+      // 缓存读失败不该影响后面的网络请求
+      console.log('[sync] 缓存阶段异常(忽略): ' + e)
+      return false
+    })
 
   // 2) 网络刷新
   return cachePhase.then(function () {
+    console.log('[sync] 请求 getToday')
     return api.getToday(token, wd).then(function (payload) {
+      console.log('[sync] getToday 返回 total=' + (payload && payload.total_count))
       onData(payload, false)
-      store.setCache(wd === null ? payload.weekday : wd, payload)
+      try {
+        store.setCache(wd === null ? payload.weekday : wd, payload)
+      } catch (e) {
+        console.log('[sync] 写缓存失败(忽略): ' + e)
+      }
       return payload
     })
   })

@@ -74,11 +74,14 @@
 
   const WEEK_LABEL = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
-  /** 去掉 numeric 带来的多余小数: 60.00 -> 60, 62.50 -> 62.5 */
+  /**
+   * 去掉 numeric 带来的多余小数: 60.00 -> 60, 62.50 -> 62.5
+   * 不用全局 isFinite —— 精简 JS 运行时未必提供, 自己判 NaN/Infinity 更保险
+   */
   function fmtNum(v) {
     if (v === null || v === undefined || v === '') return ''
     const n = Number(v)
-    if (!isFinite(n)) return ''
+    if (n !== n || n === Infinity || n === -Infinity) return ''
     return String(Math.round(n * 100) / 100)
   }
 
@@ -172,29 +175,50 @@
           }
           // 有缓存就继续用, 只做轻提示; 没缓存时把真实错误显示出来,
           // 否则「连不上」三个字什么也说明不了
+          console.log(
+            '[today] load 失败: ' + (err && err.message) +
+              ' | stack=' + (err && err.stack)
+          )
           if (self.totalCount > 0) {
             self.banner = '离线中'
           } else {
             const m = (err && err.message) || '未知错误'
-            self.banner = String(m).substring(0, 36) + ' (点此重试)'
+            // 把 stack 首行也带上, 直接指出出错位置
+            const st = err && err.stack ? String(err.stack).split('\n')[0] : ''
+            self.banner = (String(m) + ' @' + st).substring(0, 60) + ' (点此重试)'
           }
         })
     },
 
     render(payload) {
       if (!payload) return
-      const list = payload.exercises || []
-      for (let i = 0; i < list.length; i++) {
-        list[i].subtitle = buildSubtitle(list[i])
+      // 分步日志: 渲染链路上任何一步抛 not a function 都能立刻定位
+      try {
+        const list = payload.exercises || []
+        console.log('[today] render 动作数=' + list.length)
+
+        for (let i = 0; i < list.length; i++) {
+          list[i].subtitle = buildSubtitle(list[i])
+        }
+        console.log('[today] subtitle 完成')
+
+        this.title = payload.title || '今天'
+        this.doneCount = payload.done_count || 0
+        this.totalCount = payload.total_count || 0
+        console.log('[today] 标量赋值完成 total=' + this.totalCount)
+
+        this.exercises = list
+        console.log('[today] 列表赋值完成')
+
+        // 进度条总宽 386px (466 - 左右各 40)
+        this.barWidth = this.totalCount
+          ? Math.round((386 * this.doneCount) / this.totalCount)
+          : 0
+        console.log('[today] render 完成')
+      } catch (e) {
+        console.log('[today] render 异常: ' + e + ' | stack=' + (e && e.stack))
+        throw e
       }
-      this.title = payload.title || '今天'
-      this.doneCount = payload.done_count || 0
-      this.totalCount = payload.total_count || 0
-      this.exercises = list
-      // 进度条总宽 386px (466 - 左右各 40)
-      this.barWidth = this.totalCount
-        ? Math.round((386 * this.doneCount) / this.totalCount)
-        : 0
     },
 
     // ---------------- 交互 ----------------
