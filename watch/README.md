@@ -88,7 +88,10 @@ watch/
 
 ## 前置：数据库迁移
 
-Supabase → SQL Editor 执行 `supabase/migrations/0004_watch_pairing.sql`（可重复执行）。
+Supabase → SQL Editor 依次执行（均可重复执行）：
+
+1. `supabase/migrations/0004_watch_pairing.sql` — 配对与三个数据接口
+2. `supabase/migrations/0005_watch_max_weight.sql` — 预填改用历史最大重量
 
 ## 交互说明
 
@@ -100,18 +103,96 @@ Supabase → SQL Editor 执行 `supabase/migrations/0004_watch_pairing.sql`（�
 | 点击 重量/组数/次数/RIR | 切换当前调节的字段 |
 | 长按顶部标题 | 切换训练日（实际健身常会调训练日） |
 
-预填逻辑：已记录过的用实际值，否则用**上次做这个动作的重量**（来自
-`v_exercise_last` 视图），再否则用计划目标——省得每次从 0 开始转。
+预填逻辑：已记录过的用今天的实际值，否则用**历史最大重量**（来自 `v_exercise_pr`
+视图的 `max_weight_kg`），从没练过则为 0——打开就是自己的最好成绩，通常只需微调。
 
 ## 性能注意事项
 
 按官方《手表性能优化》专章写的，改动时留意：
 
-- **不要往 `data`/`private` 里塞用不到的字段**，响应式数据越多，diff 越慢
+- **不要往 `data` 里塞用不到的字段**，响应式数据越多，diff 越慢（注意只能用 `data`，见下文）
 - 列表项的派生文案（如 `subtitle`）在 JS 里一次算好，**不要在模板里写复杂表达式**
 - 页面退出时记得释放监听（本应用没有常驻监听，新增时注意）
 - 图片资源要压缩；本应用只有一个 114×114 图标，没有其它图片
 - 避免频繁 `setInterval`；表冠事件本身触发频率就高，回调里只做算术不做 IO
+
+## ⚠️ 模拟器能跑 ≠ 真机能跑
+
+**这是本项目最大的教训。** 以下四条在 BlueOS Studio 模拟器上一切正常，
+到真机上直接白屏，且没有任何报错——排查时几乎无从下手。
+
+写新页面前务必先看这一节；拿不准的语法，直接对照真实开源项目（见文末）。
+
+### 1. 只能用 `data`，不能用 `private` / `protected` / `public`
+
+```js
+export default {
+  data: { foo: 1 },        // ✅ 唯一可用
+  private: { foo: 1 },     // ❌ 真机上所有字段都是 undefined
+}
+```
+
+三个开源蓝河应用中 `data:` 出现 24 次，`private`/`protected`/`public` **各 0 次**。
+
+真机上 `private` 里的字段全部为 `undefined` → 所有 `if` 条件都是 falsy →
+带条件的元素一个都不渲染 → **屏幕上只剩没有条件的那几个元素**。
+
+路由参数也通过 `data` 接收：官方文档写明「使用 data 声明的属性会被外部数据覆盖」。
+
+### 2. 没有 `elif` / `else` 指令
+
+```html
+<div if="{{ isA }}">   <!-- ✅ -->
+<div elif="{{ isB }}"> <!-- ❌ 真机上从不渲染 -->
+<div else>             <!-- ❌ 同上 -->
+```
+
+只能写成一组**互斥的独立 `if`**，每个「否则」分支都要有自己的布尔量。
+条件里写表达式是允许的（`if="{{ list.length === 0 }}"` 参考项目在用），
+但仍建议在 JS 里算好——官方性能文档也这么要求。
+
+另有 `show="{{ }}"` 可用，区别是 `show` 只隐藏、不销毁节点。
+
+### 3. 不要凭空写 `minPlatformVersion`
+
+三个参考项目**都不声明**这个字段。填一个高于真机平台的版本号，行为不可预期。
+不确定就别写。
+
+### 4. feature 名必须逐字核对
+
+同一能力在不同文档页给的名字都不一样，只能以能跑的项目为准：
+
+| 能力 | 正确 | 错误/不可用 |
+|------|------|------------|
+| 路由 | `@blueos.app.appmanager.router` | `@blueos.app.router`（表盘用的） |
+| 网络 | `@blueos.network.fetch` | `@blueos.communication.network.fetch`（空壳） |
+| 存储 | `@blueos.storage.storage` | — |
+| 振动 | `@blueos.hardware.vibrator.**vibrator**` | `@blueos.hardware.vibrator`（少一层） |
+| 弹窗 | 未找到可用命名，`showToast` 恒为 undefined | — |
+
+且**必须在 `manifest.json` 的 `features` 里声明**，否则 require 不到。
+
+### 真机排查手段
+
+真机没有 DevTools，只能靠界面自述。本项目在首页顶部保留了一行探针：
+
+```html
+<text class="ver">v1.0.4 {{ bootInfo }}</text>
+```
+
+- 静态版本号能显示、`{{ bootInfo }}` 却是 `undefined` → **数据声明有问题**（第 1 条）
+- 版本号都不显示 → 装的还是旧包（记得每次 `versionCode` + 1）
+- 探针正常变化但界面空白 → **条件渲染有问题**（第 2 条）
+
+这一行是当时唯一有效的判据，建议长期保留。
+
+## 参考项目
+
+拿不准的语法，直接对照这些能跑的开源蓝河应用：
+
+- [Sein925/blueos-calculator](https://github.com/Sein925/blueos-calculator) — 手表端科学计算器，结构完整
+- [muyanan316/calender_blueos](https://github.com/muyanan316/calender_blueos) — 日历，条件渲染用得多
+- [chorblack/BlueOSQuickApp](https://github.com/chorblack/BlueOSQuickApp) — 多个小应用合集
 
 ## 已知的坑（实机踩过，都有对应 commit）
 
@@ -139,7 +220,10 @@ if (typeof mod.fetch === 'function') { /* 可用 */ }
 
 编译器靠静态分析 `require('@字面量')` 把 feature 打进包，写成 `require(变量)`
 运行期一定拿不到模块。所以候选模块只能一条条平铺展开，不能抽成循环。
-更稳的是直接用静态 `import`。
+
+两种写法都可用（参考项目用静态 `import`，本项目用 `try + 字面量 require`）。
+区别在于：静态 `import` 一个**不存在**的 feature 会让整个模块加载失败，进而拖垮
+引用它的页面；`require` 包在 try 里则只是拿不到那一个模块。要写多候选就用后者。
 
 ### 4. feature 必须在 manifest 声明，且名字有多个版本
 
@@ -151,7 +235,7 @@ if (typeof mod.fetch === 'function') { /* 可用 */ }
 | 网络 | `@blueos.network.fetch`、`@system.fetch` | `@blueos.communication.network.fetch` |
 | 路由 | `@blueos.app.appmanager.router` | `@blueos.app.router`（那是表盘用的） |
 | 存储 | `@blueos.storage.storage`、`@system.storage` | — |
-| 振动 | `@blueos.hardware.vibrator` | — |
+| 振动 | `@blueos.hardware.vibrator.vibrator`（双 vibrator） | `@blueos.hardware.vibrator` |
 | 弹窗 | 均未找到，`showToast` 恒为 undefined | `@blueos.app.prompt`、`@system.prompt` |
 
 代码里对每个能力都留了多候选，启动时打印实际命中的名字。
@@ -171,7 +255,9 @@ key 写错会在编译期报 `resolve entries error, error: 4006`。
 ### 6. `$page.setTitleBar()` 不存在
 
 那是标准快应用（华为/小米系）的 API，蓝河没有，调用会导致启动即崩。
-标题栏用 `manifest.json` 的 `display.titleBar` 控制。
+
+注意：`display` 里也**没有** `titleBar` / `fullScreen` 字段（官方 Display 表只有
+`backgroundColor` 一项），别照搬快应用的写法。
 
 ### 7. 标量返回值别用 `responseType: 'json'`
 
