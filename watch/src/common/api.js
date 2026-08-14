@@ -113,7 +113,7 @@ function once(fn, params) {
     // Promise 会以一个非预期的 Error 结束, 上层拿不到有用信息
     try {
       f({
-      url: CONFIG.SUPABASE_URL + '/rest/v1/rpc/' + fn,
+      url: CONFIG.API_BASE + '/rest/v1/rpc/' + fn,
       method: 'POST',
       // 一律按 text 收, 再自己 JSON.parse。
       // 用 'json' 时框架对「标量返回值」的处理不可控 —— 后端
@@ -277,6 +277,7 @@ export function selfTest() {
     ['http', 'http://www.baidu.com'],
     ['sBaidu', 'https://www.baidu.com'],
     ['sQQ', 'https://www.qq.com'],
+    ['proxy', CONFIG.API_BASE + '/health'],
     ['db', CONFIG.SUPABASE_URL + '/rest/v1/'],
   ]
   const out = []

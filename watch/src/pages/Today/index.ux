@@ -7,7 +7,7 @@
         2. 若它显示了而下面各屏都空白, 即可断定是条件渲染失效, 而非白屏崩溃
       功能稳定后可删。
     -->
-    <text class="ver">v1.0.9 {{ bootInfo }}</text>
+    <text class="ver">v1.1.0 {{ bootInfo }}</text>
 
     <!-- ============ 加载中 ============ -->
     <div if="{{ isLoading }}" class="center">

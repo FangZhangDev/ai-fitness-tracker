@@ -10,6 +10,23 @@
  * 任何人的数据。手表的真正凭据是配对后拿到的 device token。
  */
 export const CONFIG = {
+  // ===========================================================================
+  // 手表实际请求的地址 —— 必须是 http，不能是 https。
+  //
+  // 实测(v1.0.9 自检, 手表时间正确、net:bluetooth):
+  //   http://www.baidu.com  -> 206  ✅
+  //   https://www.baidu.com -> E-6  ❌
+  //   https://www.qq.com    -> E0   ❌
+  //   https://<supabase>    -> E-6  ❌
+  // 三个不同域名的 https 全挂而 http 正常，排除域名/时间/网络因素 ——
+  // 蓝河快应用的 fetch 通道发不出 HTTPS。另两个开源蓝河应用同样只用 http。
+  //
+  // 因此改由 proxy/server.js 中转: 手表 --http--> 转发服务 --https--> Supabase。
+  // 部署好服务器后，把下面这行换成你的 `http://IP:端口`，其余代码无需改动。
+  // ===========================================================================
+  API_BASE: 'http://CHANGE_ME:8080',
+
+  // 下面两项供网络自检对照用; ANON_KEY 会由手表透传给转发服务
   SUPABASE_URL: 'https://brizffqttkhuktpqlcie.supabase.co',
   ANON_KEY: 'sb_publishable_KLWOTYIG6jQ24V4oOBSx_w_OeDQsv11',
 
