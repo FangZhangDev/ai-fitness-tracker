@@ -1,0 +1,41 @@
+{
+  "package": "com.fzg.fitness",
+  "name": "健身计划",
+  "icon": "/assets/images/icon.png",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "minPlatformVersion": 1070,
+  "deviceTypeList": ["watch"],
+  "appCategory": ["sports"],
+  "features": [
+    { "name": "blueos.network.fetch" },
+    { "name": "blueos.communication.network.fetch" },
+    { "name": "blueos.storage.storage" },
+    { "name": "blueos.hardware.vibrator" }
+  ],
+  "permissions": [],
+  "config": {
+    "designWidth": 466,
+    "logLevel": "log"
+  },
+  "display": {
+    "backgroundColor": "#000000",
+    "titleBar": false,
+    "fullScreen": true
+  },
+  "router": {
+    "entry": "Today",
+    "pages": {
+      "Today": {
+        "component": "index",
+        "path": "/"
+      },
+      "Record": {
+        "component": "index"
+      },
+      "Pair": {
+        "component": "index"
+      }
+    }
+  }
+}

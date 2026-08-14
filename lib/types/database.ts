@@ -242,6 +242,56 @@ export type ExerciseLast = {
   last_rir: number | null;
 };
 
+// ---- 手表配对 (0004) ----
+export type WatchDeviceRow = {
+  id: string;
+  user_id: string;
+  token_hash: string; // sha256(token), 明文 token 只在兑换时返回一次
+  name: string;
+  created_at: string;
+  last_seen_at: string | null;
+};
+
+export type WatchPairingCodeRow = {
+  code: string;
+  user_id: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+};
+
+/** watch_get_today 的返回结构 (手表端消费) */
+export type WatchTodayExercise = {
+  id: string;
+  exercise: string;
+  target_sets: number | null;
+  rep_min: number | null;
+  rep_max: number | null;
+  rir_min: number | null;
+  rir_max: number | null;
+  rest: string | null;
+  cues: string | null;
+  equipment: string | null;
+  last_weight_kg: number | null;
+  last_sets: number | null;
+  last_reps: number | null;
+  last_rir: number | null;
+  done: boolean;
+  done_weight_kg: number | null;
+  done_sets: number | null;
+  done_reps: number | null;
+  done_rir: number | null;
+};
+
+export type WatchTodayPayload = {
+  date: string;
+  weekday: number;
+  title: string | null;
+  exercises: WatchTodayExercise[];
+  done_count: number;
+  total_count: number;
+};
+
 // ---- Supabase Database schema 映射 (用于 createClient 泛型) ----
 export type Database = {
   public: {
@@ -254,6 +304,8 @@ export type Database = {
       workout_plans: { Row: WorkoutPlan; Insert: Omit<WorkoutPlan, "id" | "created_at" | "updated_at">; Update: Partial<WorkoutPlan>; Relationships: [] };
       plan_days: { Row: PlanDay; Insert: Omit<PlanDay, "id" | "created_at" | "updated_at">; Update: Partial<PlanDay>; Relationships: [] };
       plan_exercises: { Row: PlanExercise; Insert: Omit<PlanExercise, "id" | "created_at" | "updated_at">; Update: PlanExerciseUpdate; Relationships: [] };
+      watch_devices: { Row: WatchDeviceRow; Insert: Omit<WatchDeviceRow, "id" | "created_at">; Update: Partial<WatchDeviceRow>; Relationships: [] };
+      watch_pairing_codes: { Row: WatchPairingCodeRow; Insert: WatchPairingCodeRow; Update: Partial<WatchPairingCodeRow>; Relationships: [] };
     };
     Views: {
       v_exercise_pr: { Row: ExercisePR; Relationships: [] };
@@ -263,6 +315,20 @@ export type Database = {
     Functions: {
       // 原子地切换启用中的计划, 见 0002 迁移
       activate_plan: { Args: { p_plan_id: string }; Returns: undefined };
+      // 手表配对与数据接口, 见 0004 迁移
+      watch_create_pairing_code: {
+        Args: Record<string, never>;
+        Returns: { code: string; expires_at: string }[];
+      };
+      watch_redeem_pairing_code: { Args: { p_code: string }; Returns: string };
+      watch_get_today: {
+        Args: { p_token: string; p_weekday?: number | null };
+        Returns: WatchTodayPayload;
+      };
+      watch_submit_logs: {
+        Args: { p_token: string; p_logs: Json };
+        Returns: { ok: boolean; written: number };
+      };
     };
     Enums: { meal_type: MealType; activity_level: ActivityLevel };
     CompositeTypes: Record<string, never>;

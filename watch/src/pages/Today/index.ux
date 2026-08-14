@@ -1,0 +1,413 @@
+<template>
+  <div class="page">
+    <!-- ============ 加载中 ============ -->
+    <div if="{{ stage === 'loading' }}" class="center">
+      <text class="hint">载入中…</text>
+    </div>
+
+    <!-- ============ 未配对 ============ -->
+    <div elif="{{ stage === 'unpaired' }}" class="center">
+      <text class="big-icon">⌚</text>
+      <text class="title-sm">还没配对</text>
+      <text class="hint">在网页「手表」页生成配对码</text>
+      <div class="btn" onclick="goPair">
+        <text class="btn-text">去配对</text>
+      </div>
+    </div>
+
+    <!-- ============ 选择训练日 ============ -->
+    <div elif="{{ stage === 'pickday' }}" class="wrap">
+      <div class="header">
+        <text class="head-title">选择训练日</text>
+      </div>
+      <list class="list" id="daylist">
+        <list-item type="day" class="day-item" for="{{ weekdays }}" onclick="chooseDay($idx)">
+          <text class="day-text {{ $item.current ? 'day-on' : '' }}">{{ $item.label }}</text>
+        </list-item>
+      </list>
+    </div>
+
+    <!-- ============ 今日计划 ============ -->
+    <div else class="wrap">
+      <!-- 顶部: 训练日 + 进度. 长按可切换训练日 -->
+      <div class="header" onlongpress="openPickDay">
+        <text class="head-title">{{ title }}</text>
+        <text class="head-count">{{ doneCount }}/{{ totalCount }}</text>
+      </div>
+      <!-- 进度条: 唯一的强调色, 一眼看出还剩几个 -->
+      <div class="bar-bg">
+        <div class="bar-fill" style="width: {{ barWidth }}px;"></div>
+      </div>
+
+      <!-- 离线/同步状态, 只在有异常时占位 -->
+      <text if="{{ banner }}" class="banner">{{ banner }}</text>
+
+      <!-- 今天没有安排 -->
+      <div if="{{ totalCount === 0 }}" class="center-rest">
+        <text class="big-icon">🌙</text>
+        <text class="hint">今天休息</text>
+        <text class="hint-sm">长按标题可切换训练日</text>
+      </div>
+
+      <!-- 动作列表 -->
+      <list else class="list" id="exlist">
+        <list-item type="ex" class="item" for="{{ exercises }}" onclick="openRecord($idx)">
+          <div class="dot-wrap">
+            <text class="dot {{ $item.done ? 'dot-on' : '' }}">{{ $item.done ? '✓' : '○' }}</text>
+          </div>
+          <div class="item-body">
+            <text class="item-name {{ $item.done ? 'item-name-done' : '' }}">{{ $item.exercise }}</text>
+            <text class="item-sub">{{ $item.subtitle }}</text>
+          </div>
+        </list-item>
+      </list>
+    </div>
+  </div>
+</template>
+
+<script>
+  import * as store from '../../common/store.js'
+  import * as sync from '../../common/sync.js'
+  import * as api from '../../common/api.js'
+  import * as device from '../../common/device.js'
+
+  const WEEK_LABEL = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+  /** 去掉 numeric 带来的多余小数: 60.00 -> 60, 62.50 -> 62.5 */
+  function fmtNum(v) {
+    if (v === null || v === undefined || v === '') return ''
+    const n = Number(v)
+    if (!isFinite(n)) return ''
+    return String(Math.round(n * 100) / 100)
+  }
+
+  /** 列表第二行: 已完成显示实际做的, 未完成显示计划目标 */
+  function buildSubtitle(e) {
+    if (e.done) {
+      const w = fmtNum(e.done_weight_kg)
+      const parts = []
+      if (w) parts.push(w + 'kg')
+      if (e.done_sets && e.done_reps) parts.push(e.done_sets + '×' + e.done_reps)
+      else if (e.done_reps) parts.push(e.done_reps + '次')
+      if (e.done_rir !== null && e.done_rir !== undefined) parts.push('RIR' + e.done_rir)
+      return parts.join('  ')
+    }
+    const parts = []
+    const lw = fmtNum(e.last_weight_kg)
+    if (lw) parts.push(lw + 'kg')
+    if (e.target_sets) {
+      let reps = ''
+      if (e.rep_min && e.rep_max) {
+        reps = e.rep_min === e.rep_max ? String(e.rep_min) : e.rep_min + '-' + e.rep_max
+      } else if (e.rep_min) {
+        reps = String(e.rep_min)
+      }
+      parts.push(reps ? e.target_sets + '×' + reps : e.target_sets + '组')
+    }
+    return parts.join('  ')
+  }
+
+  export default {
+    private: {
+      stage: 'loading', // loading | unpaired | pickday | ready
+      token: '',
+      title: '',
+      doneCount: 0,
+      totalCount: 0,
+      barWidth: 0,
+      exercises: [],
+      banner: '',
+      weekday: null, // null = 跟随今天; 1..7 = 手动指定
+      weekdays: [],
+    },
+
+    onInit() {
+      this.$page.setTitleBar({ visible: false })
+    },
+
+    onShow() {
+      // 每次回到本页都重新拉一次 —— 从记录页返回后进度要立刻更新
+      this.boot()
+    },
+
+    boot() {
+      const self = this
+      store.getToken().then(function (token) {
+        if (!token) {
+          self.stage = 'unpaired'
+          return
+        }
+        self.token = token
+        self.load()
+      })
+    },
+
+    load() {
+      const self = this
+      if (self.stage !== 'pickday') self.stage = 'ready'
+      self.banner = ''
+
+      sync
+        .loadToday(self.token, self.weekday, function (payload, fromCache) {
+          self.render(payload)
+          if (fromCache) self.banner = '离线数据'
+        })
+        .then(function () {
+          self.banner = ''
+          // 顺手把攒下的离线记录补传
+          return sync.flushPending(self.token).then(function (n) {
+            if (n > 0) {
+              self.banner = '已补传 ' + n + ' 条'
+              // 补传后服务端状态变了, 重新拉一次
+              return api.getToday(self.token, self.weekday).then(function (p) {
+                self.render(p)
+              })
+            }
+          })
+        })
+        .catch(function (err) {
+          if (api.isUnpaired(err)) {
+            store.clearToken()
+            self.stage = 'unpaired'
+            return
+          }
+          // 网络失败但有缓存 -> 继续用缓存, 只提示; 没缓存 -> 明确报错
+          self.banner = self.totalCount > 0 ? '离线中' : '连不上, 稍后重试'
+        })
+    },
+
+    render(payload) {
+      if (!payload) return
+      const list = payload.exercises || []
+      for (let i = 0; i < list.length; i++) {
+        list[i].subtitle = buildSubtitle(list[i])
+      }
+      this.title = payload.title || '今天'
+      this.doneCount = payload.done_count || 0
+      this.totalCount = payload.total_count || 0
+      this.exercises = list
+      // 进度条总宽 386px (466 - 左右各 40)
+      this.barWidth = this.totalCount
+        ? Math.round((386 * this.doneCount) / this.totalCount)
+        : 0
+    },
+
+    // ---------------- 交互 ----------------
+
+    openRecord(idx) {
+      const e = this.exercises[idx]
+      if (!e) return
+      device.push('/Record', {
+        exercise: e.exercise,
+        workoutDay: this.title,
+        // 预填: 已记录过就用实际值, 否则用上次的值, 再否则用计划目标
+        weight: fmtNum(e.done ? e.done_weight_kg : e.last_weight_kg) || '0',
+        sets: String(e.done ? e.done_sets || 0 : e.target_sets || e.last_sets || 3),
+        reps: String(e.done ? e.done_reps || 0 : e.rep_min || e.last_reps || 8),
+        rir: String(
+          e.done && e.done_rir !== null && e.done_rir !== undefined
+            ? e.done_rir
+            : e.rir_min !== null && e.rir_min !== undefined
+              ? e.rir_min
+              : 2
+        ),
+      })
+    },
+
+    openPickDay() {
+      const cur = this.weekday || sync.todayWeekday()
+      const days = []
+      for (let i = 1; i <= 7; i++) {
+        days.push({ label: WEEK_LABEL[i - 1], value: i, current: i === cur })
+      }
+      this.weekdays = days
+      this.stage = 'pickday'
+    },
+
+    chooseDay(idx) {
+      const d = this.weekdays[idx]
+      if (!d) return
+      // 选中今天就恢复成「跟随今天」, 免得跨天后还停在旧的训练日
+      this.weekday = d.value === sync.todayWeekday() ? null : d.value
+      this.stage = 'ready'
+      this.load()
+    },
+
+    goPair() {
+      device.push('/Pair')
+    },
+  }
+</script>
+
+<style>
+  .page {
+    flex-direction: column;
+    width: 466px;
+    height: 466px;
+    background-color: #000000;
+  }
+
+  .wrap {
+    flex-direction: column;
+    width: 466px;
+    height: 466px;
+  }
+
+  /* ---------- 居中态: 加载 / 未配对 ---------- */
+  .center {
+    flex-direction: column;
+    width: 466px;
+    height: 466px;
+    align-items: center;
+    justify-content: center;
+  }
+  .center-rest {
+    flex-direction: column;
+    width: 466px;
+    height: 300px;
+    align-items: center;
+    justify-content: center;
+  }
+  .big-icon {
+    font-size: 72px;
+    margin-bottom: 16px;
+  }
+  .title-sm {
+    font-size: 32px;
+    color: #ffffff;
+    margin-bottom: 8px;
+  }
+  .hint {
+    font-size: 26px;
+    color: #8a8a8e;
+    text-align: center;
+  }
+  .hint-sm {
+    font-size: 22px;
+    color: #48484a;
+    margin-top: 10px;
+  }
+  .btn {
+    margin-top: 28px;
+    width: 220px;
+    height: 72px;
+    border-radius: 36px;
+    background-color: #00e5a0;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-text {
+    font-size: 28px;
+    color: #000000;
+  }
+
+  /* ---------- 顶部 ---------- */
+  .header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 386px;
+    margin-left: 40px;
+    margin-top: 46px;
+    height: 48px;
+  }
+  .head-title {
+    font-size: 32px;
+    color: #ffffff;
+    lines: 1;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+  .head-count {
+    font-size: 28px;
+    color: #00e5a0;
+    margin-left: 12px;
+  }
+
+  .bar-bg {
+    width: 386px;
+    height: 6px;
+    margin-left: 40px;
+    margin-top: 10px;
+    border-radius: 3px;
+    background-color: #1c1c1e;
+  }
+  .bar-fill {
+    height: 6px;
+    border-radius: 3px;
+    background-color: #00e5a0;
+  }
+
+  .banner {
+    width: 386px;
+    margin-left: 40px;
+    margin-top: 8px;
+    font-size: 20px;
+    color: #8a8a8e;
+    text-align: center;
+  }
+
+  /* ---------- 列表 ---------- */
+  .list {
+    width: 466px;
+    flex: 1;
+    margin-top: 8px;
+    padding-bottom: 40px;
+  }
+  .item {
+    flex-direction: row;
+    align-items: center;
+    width: 466px;
+    padding-left: 40px;
+    padding-right: 40px;
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+  .dot-wrap {
+    width: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+  .dot {
+    font-size: 30px;
+    color: #48484a;
+  }
+  .dot-on {
+    color: #00e5a0;
+  }
+  .item-body {
+    flex-direction: column;
+    flex: 1;
+  }
+  .item-name {
+    font-size: 30px;
+    color: #ffffff;
+    lines: 1;
+    text-overflow: ellipsis;
+  }
+  .item-name-done {
+    color: #8a8a8e;
+  }
+  .item-sub {
+    font-size: 22px;
+    color: #8a8a8e;
+    margin-top: 4px;
+    lines: 1;
+    text-overflow: ellipsis;
+  }
+
+  /* ---------- 选择训练日 ---------- */
+  .day-item {
+    width: 466px;
+    height: 76px;
+    align-items: center;
+    justify-content: center;
+  }
+  .day-text {
+    font-size: 30px;
+    color: #ffffff;
+  }
+  .day-on {
+    color: #00e5a0;
+  }
+</style>

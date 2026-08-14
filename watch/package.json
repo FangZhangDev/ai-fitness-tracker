@@ -1,0 +1,7 @@
+{
+  "name": "fitness-watch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI 健身追踪 — vivo Watch 3 (BlueOS) 蓝河应用",
+  "keywords": ["blueos", "quickapp", "watch", "fitness"]
+}

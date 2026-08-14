@@ -1,0 +1,180 @@
+<template>
+  <div
+    class="page"
+    id="root"
+    focusable="true"
+    rotation-sensitivity="2"
+    @rotation="onRotation"
+  >
+    <text class="title">输入配对码</text>
+    <text class="sub">网页「手表」页生成</text>
+
+    <!-- 6 位数字: 转表冠改当前位, 点击切换位 -->
+    <div class="code-row">
+      <div class="cell {{ $item.on ? 'cell-on' : '' }}" for="{{ cells }}" onclick="pick($idx)">
+        <text class="cell-text {{ $item.on ? 'cell-text-on' : '' }}">{{ $item.d }}</text>
+      </div>
+    </div>
+
+    <text class="err">{{ err }}</text>
+
+    <div class="btn {{ busy ? 'btn-off' : '' }}" onclick="submit">
+      <text class="btn-text">{{ busy ? '配对中…' : '确认' }}</text>
+    </div>
+  </div>
+</template>
+
+<script>
+  import * as api from '../../common/api.js'
+  import * as store from '../../common/store.js'
+  import * as device from '../../common/device.js'
+
+  export default {
+    private: {
+      digits: [0, 0, 0, 0, 0, 0],
+      idx: 0,
+      cells: [],
+      err: '',
+      busy: false,
+    },
+
+    onInit() {
+      this.$page.setTitleBar({ visible: false })
+      this.refresh()
+    },
+
+    onReady() {
+      const el = this.$element('root')
+      if (el && el.requestFocus) el.requestFocus(true)
+    },
+
+    refresh() {
+      const list = []
+      for (let i = 0; i < 6; i++) {
+        list.push({ d: String(this.digits[i]), on: i === this.idx })
+      }
+      this.cells = list
+    },
+
+    /** 转表冠: 0-9 循环 */
+    onRotation(e) {
+      if (!e || e.state === 3) return
+      let d = e.delta
+      if (!d) d = e.direction ? -1 : 1
+      const dir = d > 0 ? 1 : -1
+
+      let v = this.digits[this.idx] + dir
+      if (v > 9) v = 0
+      if (v < 0) v = 9
+      this.digits[this.idx] = v
+      this.refresh()
+    },
+
+    pick(i) {
+      this.idx = i
+      this.refresh()
+    },
+
+    submit() {
+      if (this.busy) return
+      const code = this.digits.join('')
+      this.busy = true
+      this.err = ''
+      const self = this
+
+      api
+        .redeemCode(code)
+        .then(function (token) {
+          if (!token || typeof token !== 'string') {
+            self.busy = false
+            self.err = '配对码无效'
+            return
+          }
+          return store.setToken(token).then(function () {
+            device.vibrate()
+            self.busy = false
+            // replace: 免得用户按返回又回到配对页
+            device.replace('/Today')
+          })
+        })
+        .catch(function (e) {
+          self.busy = false
+          // 后端对过期/用过的码统一抛 code invalid or expired
+          self.err =
+            e && e.message && e.message.indexOf('code invalid') >= 0
+              ? '配对码无效或已过期'
+              : '连不上, 检查手机蓝牙'
+        })
+    },
+  }
+</script>
+
+<style>
+  .page {
+    flex-direction: column;
+    width: 466px;
+    height: 466px;
+    background-color: #000000;
+    align-items: center;
+  }
+  .title {
+    margin-top: 74px;
+    font-size: 32px;
+    color: #ffffff;
+  }
+  .sub {
+    margin-top: 6px;
+    font-size: 22px;
+    color: #8a8a8e;
+  }
+
+  .code-row {
+    flex-direction: row;
+    margin-top: 30px;
+    justify-content: center;
+  }
+  .cell {
+    width: 54px;
+    height: 72px;
+    margin-left: 4px;
+    margin-right: 4px;
+    border-radius: 10px;
+    background-color: #1c1c1e;
+    align-items: center;
+    justify-content: center;
+  }
+  .cell-on {
+    background-color: #00e5a0;
+  }
+  .cell-text {
+    font-size: 36px;
+    color: #ffffff;
+  }
+  .cell-text-on {
+    color: #000000;
+  }
+
+  .err {
+    margin-top: 14px;
+    height: 28px;
+    font-size: 22px;
+    color: #ff453a;
+  }
+
+  .btn {
+    margin-top: 12px;
+    width: 220px;
+    height: 72px;
+    border-radius: 36px;
+    background-color: #00e5a0;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-off {
+    background-color: #1c1c1e;
+  }
+  .btn-text {
+    font-size: 28px;
+    color: #000000;
+  }
+</style>

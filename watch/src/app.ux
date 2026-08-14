@@ -1,0 +1,20 @@
+<script>
+  export default {
+    onCreate() {
+      console.log('[app] 健身计划 启动')
+    },
+    onDestroy() {
+      console.log('[app] 退出')
+    },
+  }
+</script>
+
+<style>
+  /* 全局: AMOLED 纯黑底, 圆屏边缘自然消隐, 同时省电 */
+  .page {
+    flex-direction: column;
+    width: 466px;
+    height: 466px;
+    background-color: #000000;
+  }
+</style>

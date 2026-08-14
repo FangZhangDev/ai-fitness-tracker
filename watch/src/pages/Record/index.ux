@@ -1,0 +1,282 @@
+<template>
+  <!--
+    表冠旋转需要组件处于获焦状态, 且一页只能有一个焦点组件。
+    这里把焦点放在最外层容器上, 由它统一接管 rotation 事件。
+  -->
+  <div
+    class="page"
+    id="root"
+    focusable="true"
+    rotation-sensitivity="2"
+    @rotation="onRotation"
+  >
+    <!-- 动作名 -->
+    <text class="ex-name">{{ exercise }}</text>
+
+    <!-- 当前调节的数值: 一屏里最大的元素, 转表冠时只有它在变 -->
+    <div class="value-wrap">
+      <text class="arrow">▲</text>
+      <div class="value-row">
+        <text class="value">{{ displayValue }}</text>
+        <text class="unit">{{ displayUnit }}</text>
+      </div>
+      <text class="arrow">▼</text>
+    </div>
+
+    <!-- 字段切换: 点哪个就调哪个 -->
+    <div class="tabs">
+      <div class="tab" for="{{ fields }}" onclick="setField($idx)">
+        <text class="tab-label {{ $item.on ? 'tab-on' : '' }}">{{ $item.label }}</text>
+        <text class="tab-value {{ $item.on ? 'tab-on' : '' }}">{{ $item.text }}</text>
+      </div>
+    </div>
+
+    <!-- 完成 -->
+    <div class="done-btn {{ saving ? 'done-btn-off' : '' }}" onclick="save">
+      <text class="done-text">{{ saving ? '保存中…' : '完成' }}</text>
+    </div>
+  </div>
+</template>
+
+<script>
+  import { CONFIG } from '../../config.js'
+  import * as sync from '../../common/sync.js'
+  import * as api from '../../common/api.js'
+  import * as store from '../../common/store.js'
+  import * as device from '../../common/device.js'
+
+  const FIELDS = [
+    { key: 'weight', label: '重量', unit: 'kg' },
+    { key: 'sets', label: '组数', unit: '组' },
+    { key: 'reps', label: '次数', unit: '次' },
+    { key: 'rir', label: 'RIR', unit: '' },
+  ]
+
+  function fmt(n) {
+    return String(Math.round(n * 100) / 100)
+  }
+
+  export default {
+    // protected: 允许应用内页面传参, 但不接受外部 deeplink 覆盖
+    protected: {
+      exercise: '',
+      workoutDay: '',
+      weight: '0',
+      sets: '3',
+      reps: '8',
+      rir: '2',
+    },
+
+    private: {
+      fieldIdx: 0, // 当前正在调的字段
+      vals: { weight: 0, sets: 3, reps: 8, rir: 2 },
+      displayValue: '0',
+      displayUnit: 'kg',
+      fields: [],
+      saving: false,
+    },
+
+    onInit() {
+      this.$page.setTitleBar({ visible: false })
+      this.vals = {
+        weight: Number(this.weight) || 0,
+        sets: Number(this.sets) || 0,
+        reps: Number(this.reps) || 0,
+        rir: Number(this.rir) || 0,
+      }
+      this.refresh()
+    },
+
+    onReady() {
+      // 抢焦点, 否则表冠事件不会派发到本组件
+      const el = this.$element('root')
+      if (el && el.requestFocus) el.requestFocus(true)
+    },
+
+    /** 同步 UI 上的派生数据 */
+    refresh() {
+      const cur = FIELDS[this.fieldIdx]
+      const list = []
+      for (let i = 0; i < FIELDS.length; i++) {
+        const f = FIELDS[i]
+        list.push({
+          label: f.label,
+          text: fmt(this.vals[f.key]),
+          on: i === this.fieldIdx,
+        })
+      }
+      this.fields = list
+      this.displayValue = fmt(this.vals[cur.key])
+      this.displayUnit = cur.unit
+    },
+
+    /**
+     * 表冠旋转
+     * 回调给的是 { direction, delta, velocity, duration, state }
+     *   delta 通常为 ±1; 个别固件只给大小不给符号, 所以用 direction 兜底
+     *   velocity 高时加大步进 —— 从 20kg 转到 80kg 不至于转到手酸
+     */
+    onRotation(e) {
+      if (!e) return
+      if (e.state === 3) return // 3 = 旋转结束, 不重复计数
+
+      let d = e.delta
+      if (!d) d = e.direction ? -1 : 1
+      const dir = d > 0 ? 1 : -1
+
+      const fast = e.velocity && Math.abs(e.velocity) > 15 ? 4 : 1
+      const key = FIELDS[this.fieldIdx].key
+      const step = CONFIG.STEP[key] * fast
+      const range = CONFIG.RANGE[key]
+
+      let next = this.vals[key] + dir * step
+      // 浮点累加会攒出 62.50000000000001, 统一收敛到两位
+      next = Math.round(next * 100) / 100
+      if (next < range[0]) next = range[0]
+      if (next > range[1]) next = range[1]
+
+      this.vals[key] = next
+      this.refresh()
+    },
+
+    setField(idx) {
+      this.fieldIdx = idx
+      this.refresh()
+    },
+
+    save() {
+      if (this.saving) return
+      this.saving = true
+      const self = this
+
+      const log = {
+        exercise: this.exercise,
+        workout_day: this.workoutDay,
+        date: sync.todayStr(),
+        weight_kg: this.vals.weight,
+        sets: this.vals.sets,
+        reps: this.vals.reps,
+        rir: this.vals.rir,
+      }
+
+      store.getToken().then(function (token) {
+        if (!token) {
+          self.saving = false
+          device.toast('未配对')
+          return
+        }
+        sync
+          .recordExercise(token, log)
+          .then(function (synced) {
+            device.vibrate()
+            device.toast(synced ? '已记录' : '已保存, 联网后自动上传')
+            self.saving = false
+            device.back()
+          })
+          .catch(function (err) {
+            self.saving = false
+            if (api.isUnpaired(err)) {
+              store.clearToken()
+              device.toast('配对已失效, 请重新配对')
+              device.back()
+              return
+            }
+            // 走到这里说明连本地入队都失败了, 属于异常情况
+            device.toast('保存失败')
+          })
+      })
+    },
+  }
+</script>
+
+<style>
+  .page {
+    flex-direction: column;
+    width: 466px;
+    height: 466px;
+    background-color: #000000;
+    align-items: center;
+  }
+
+  .ex-name {
+    width: 366px;
+    margin-top: 44px;
+    font-size: 30px;
+    color: #8a8a8e;
+    text-align: center;
+    lines: 1;
+    text-overflow: ellipsis;
+  }
+
+  /* ---------- 主数值 ---------- */
+  .value-wrap {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-top: 6px;
+    height: 150px;
+  }
+  .arrow {
+    font-size: 20px;
+    color: #48484a;
+  }
+  .value-row {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: center;
+    height: 86px;
+  }
+  .value {
+    font-size: 76px;
+    color: #ffffff;
+  }
+  .unit {
+    font-size: 28px;
+    color: #8a8a8e;
+    margin-left: 8px;
+    margin-bottom: 12px;
+  }
+
+  /* ---------- 字段切换 ---------- */
+  .tabs {
+    flex-direction: row;
+    width: 400px;
+    margin-top: 4px;
+    justify-content: space-between;
+  }
+  .tab {
+    flex-direction: column;
+    align-items: center;
+    width: 100px;
+  }
+  .tab-label {
+    font-size: 20px;
+    color: #48484a;
+  }
+  .tab-value {
+    font-size: 26px;
+    color: #8a8a8e;
+    margin-top: 2px;
+  }
+  .tab-on {
+    color: #00e5a0;
+  }
+
+  /* ---------- 完成 ---------- */
+  .done-btn {
+    margin-top: 22px;
+    width: 240px;
+    height: 74px;
+    border-radius: 37px;
+    background-color: #00e5a0;
+    align-items: center;
+    justify-content: center;
+  }
+  .done-btn-off {
+    background-color: #1c1c1e;
+  }
+  .done-text {
+    font-size: 30px;
+    color: #000000;
+  }
+</style>
