@@ -70,6 +70,49 @@ export async function deleteOne(formData: FormData): Promise<ActionResult> {
   return { deleted: 1 };
 }
 
+/**
+ * 批量删除。
+ *
+ * 前端把选中的行编码成 "kind:id" 一条条塞进 FormData 的 ids 里。
+ * 这里按表分组, 每张表一次 in(...) 删掉 —— 选了 80 条也只有三次往返,
+ * 不会变成 80 次。
+ *
+ * 注意: RLS 已经保证只能删自己的行, 这里仍显式带上 user_id,
+ * 免得哪天策略被改松了就成了越权删除。
+ */
+export async function deleteMany(formData: FormData): Promise<ActionResult> {
+  const { supabase, userId } = await getCurrentUser();
+
+  const byKind = new Map<DataKind, string[]>();
+  for (const raw of formData.getAll("ids")) {
+    const [kind, id] = raw.toString().split(":");
+    if (!id || !(kind in KINDS)) continue;
+    const k = kind as DataKind;
+    const arr = byKind.get(k);
+    if (arr) arr.push(id);
+    else byKind.set(k, [id]);
+  }
+  if (!byKind.size) return { error: "没有选中任何记录" };
+
+  let deleted = 0;
+  for (const [kind, ids] of byKind) {
+    const { error, count } = await supabase
+      .from(kind)
+      .delete({ count: "exact" })
+      .eq("user_id", userId)
+      .in("id", ids);
+    if (error) return { error: `${KINDS[kind]}删除失败: ${error.message}` };
+    deleted += count ?? 0;
+  }
+
+  revalidatePath("/data");
+  revalidatePath("/");
+  revalidatePath("/body");
+  revalidatePath("/meals");
+  revalidatePath("/workouts");
+  return { deleted };
+}
+
 /** 删除一条 AI 分析报告 */
 export async function deleteAnalysis(formData: FormData): Promise<ActionResult> {
   const { supabase } = await getCurrentUser();

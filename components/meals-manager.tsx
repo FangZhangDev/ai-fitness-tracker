@@ -55,8 +55,11 @@ export default function MealsManager({
     el.setSelectionRange(text.length, text.length);
   }
 
-  /** 用一个常吃套餐: 填入 + 记一次使用(纯统计, 失败不打扰用户) */
-  function useTemplate(t: MealTemplate) {
+  /**
+   * 用一个常吃套餐: 填入 + 记一次使用(纯统计, 失败不打扰用户)。
+   * 名字别以 use 开头 —— react-hooks 的 lint 会把它当成自定义 Hook。
+   */
+  function applyTemplate(t: MealTemplate) {
     fill(t.description);
     void touchMealTemplate(t.id);
   }
@@ -117,7 +120,7 @@ export default function MealsManager({
                       <button
                         key={t.id}
                         type="button"
-                        onClick={() => useTemplate(t)}
+                        onClick={() => applyTemplate(t)}
                         title={t.description}
                         className="max-w-[16rem] truncate rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 transition hover:border-indigo-400 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-300 dark:hover:border-indigo-600"
                       >
