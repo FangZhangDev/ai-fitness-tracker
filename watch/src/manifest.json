@@ -8,8 +8,11 @@
   "deviceTypeList": ["watch"],
   "appCategory": ["sports"],
   "features": [
-    { "name": "blueos.network.fetch" },
+    { "name": "blueos.app.appmanager.router" },
+    { "name": "blueos.app.router" },
+    { "name": "blueos.app.prompt" },
     { "name": "blueos.communication.network.fetch" },
+    { "name": "blueos.network.fetch" },
     { "name": "blueos.storage.storage" },
     { "name": "blueos.hardware.vibrator" }
   ],

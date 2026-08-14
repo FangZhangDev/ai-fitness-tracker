@@ -13,6 +13,7 @@
       <div class="btn" onclick="goPair">
         <text class="btn-text">去配对</text>
       </div>
+      <text if="{{ pairHint }}" class="err-hint">{{ pairHint }}</text>
     </div>
 
     <!-- ============ 选择训练日 ============ -->
@@ -119,6 +120,7 @@
       banner: '',
       weekday: null, // null = 跟随今天; 1..7 = 手动指定
       weekdays: [],
+      pairHint: '',
     },
 
     // 标题栏由 manifest.json 的 display.titleBar 控制, 不在代码里调
@@ -231,7 +233,10 @@
     },
 
     goPair() {
-      device.push('/pair')
+      if (!device.push('/pair')) {
+        // 路由模块没拿到时不要静默失败, 否则表现为「按钮点不动」
+        this.pairHint = '路由不可用, 请查看 DevTools 日志'
+      }
     },
   }
 </script>
@@ -292,6 +297,13 @@
     background-color: #00e5a0;
     align-items: center;
     justify-content: center;
+  }
+  .err-hint {
+    margin-top: 16px;
+    width: 380px;
+    font-size: 20px;
+    color: #ff453a;
+    text-align: center;
   }
   .btn-text {
     font-size: 28px;
