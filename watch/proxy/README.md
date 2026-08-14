@@ -19,6 +19,37 @@ vivo Watch 3 上，蓝河快应用的 `fetch` 通道**发不出 HTTPS 请求**�
 
 而 Supabase 强制 https，所以中间必须有一跳。
 
+## 它不只是个管道：两个必须保留的机制
+
+### 1. 配对码兑换幂等（治「网页显示已绑定、手表却报 400」）
+
+手机蓝牙代理会**自作主张重发超时的 POST**。实测日志：
+
+```
+16:55:33 watch_redeem_pairing_code status=200 ms=3568   ← 这次其实成功了
+16:55:42 watch_redeem_pairing_code status=400 ms=7320   ← 同一个码被重发, 已作废
+```
+
+配对码是一次性的，第二发必然 `code invalid or expired`，于是设备在库里建好了、
+手表却停在错误页。服务按 `p_code` **合并并发 + 缓存成功结果 10 分钟**，
+重发直接拿回同一个 token。缓存只在内存，重启即清空。
+
+### 2. 连接复用 + 定时保温（治超时重发的根因）
+
+上游延迟实测 total 1.2s / 2.5s / 9.8s，光 TLS 握手就 0.6~2.2s，DNS 偶尔抖到 5s。
+每请求新建一条 TLS 连接的话，手表侧大约 5 秒就超时。改成 keep-alive 连接池 +
+每 40s 打一次上游保温后，稳定态只剩一个 RTT：
+
+```
+改之前: ms=3568
+改之后: ms=566 / 587 / 591 / 562
+```
+
+对手表侧也开了 HTTP/1.1 keep-alive（响应一律带 Content-Length，安全）。
+
+> 复用连接失败时只对「从池子里取出的旧连接」重试——那种失败发生在请求发出之前。
+> 新建连接失败不重试，否则可能造成重复兑换。
+
 ## 方案一：跑在常开的 Mac 上（零成本，推荐先试）
 
 macOS 自带 python3，**不用装任何东西**：
@@ -181,3 +212,18 @@ POST /rest/v1/rpc/watch_redeem_pairing_code -> 400 {"message":"code invalid..."}
 POST /rest/v1/rpc/pg_sleep                -> 403 {"message":"rpc not allowed"}  拒绝
 GET  /rest/v1/workout_logs?select=*       -> 404 {"message":"not found"}        拒绝
 ```
+
+幂等性冒烟测试（假上游 + 真 `server.py`）：串行重发与 3 路并发重发，
+上游都只收到 1 次，三个调用方拿到同一个 token。
+
+## 看日志
+
+非 2xx 会额外记一列 `params=`，**只记参数名不记参数值**（值里有 token）：
+
+```
+17:07:37 INFO: 转发完成 fn=watch_get_today status=404 bytes=382 params=p_weekday
+```
+
+上面这条就是手表把 `p_token` 弄丢了——`JSON.stringify` 会把值为 `undefined`
+的字段整个丢掉，PostgREST 找不到匹配签名就回 404，看着特别像「接口没部署」。
+手表端已在 `api.js` 里做了 token 体检，发出去之前就拦下。

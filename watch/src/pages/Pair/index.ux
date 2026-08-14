@@ -28,11 +28,11 @@
   import * as api from '../../common/api.js'
   import * as store from '../../common/store.js'
   import * as device from '../../common/device.js'
+  import { createRotary } from '../../common/rotary.js'
 
-  // 表冠节流: 攒够这么多步进才跳一格, 数值越大越迟钝。
-  // 3 实测仍偏灵敏, 取 8; 嫌迟钝就往下调, 这是唯一的调节旋钮。
-  const ROTATE_STEP = 8
-  let rotateAcc = 0
+  // 表冠节流: 见 common/rotary.js。
+  // 输错一位就要整串重来, 所以这里比记录页还钝一点(冷却 200ms)。
+  const rotary = createRotary({ step: 4, cooldown: 200 })
 
   export default {
     // 蓝河只认 data —— private/protected/public 在真机上不生效,
@@ -74,22 +74,10 @@
       this.cells = list
     },
 
-    /**
-     * 转表冠: 0-9 循环
-     * 每来一个事件就跳一格会过于灵敏, 手一抖就冲过头。这里累积旋转量,
-     * 攒够 ROTATE_STEP 才动一格; 计数放模块级变量, 不进 data(不参与渲染)。
-     */
+    /** 转表冠: 0-9 循环; 节流全交给 rotary */
     onRotation(e) {
-      if (!e || e.state === 3) return
-      let d = e.delta
-      if (!d) d = e.direction ? -1 : 1
-
-      // 反向时立即清零, 免得残留的反向累积让第一下没反应
-      if ((d > 0) !== (rotateAcc > 0)) rotateAcc = 0
-      rotateAcc += d
-      if (Math.abs(rotateAcc) < ROTATE_STEP) return
-      const dir = rotateAcc > 0 ? 1 : -1
-      rotateAcc = 0
+      const dir = rotary.feed(e)
+      if (!dir) return
 
       let v = this.digits[this.idx] + dir
       if (v > 9) v = 0
@@ -100,6 +88,8 @@
 
     pick(i) {
       this.idx = i
+      // 换了位就清账, 免得上一位攒下的旋转量落到新的一位上
+      rotary.reset()
       this.refresh()
     },
 
@@ -157,9 +147,12 @@
         .catch(function (e) {
           self.setBusy(false)
           const m = (e && e.message) || '未知错误'
-          if (m.indexOf('code invalid') >= 0) {
-            // 后端对过期/用过的码统一抛 code invalid or expired
-            self.err = '配对码无效或已过期'
+          const code = e && e.code
+          // 这一页只会打兑换接口, 后端的 4xx 只有一种含义: 这个码不能用。
+          // 蓝河 fetch 在 HTTP 400 时走的是 fail 回调, 回调里拿不到响应体,
+          // 于是消息只剩 "net400" —— 之前就这么把用户干懵了, 这里按状态码判。
+          if (code === 400 || m.indexOf('code invalid') >= 0 || m.indexOf('net400') >= 0) {
+            self.err = '配对码无效或已过期, 请在网页重新生成'
           } else if (m.indexOf('fetch模块') >= 0) {
             // 直接把模块真实结构摆到屏幕上, 省得去翻 DevTools
             self.err = api.diagText()

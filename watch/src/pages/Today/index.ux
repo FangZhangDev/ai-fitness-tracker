@@ -7,7 +7,7 @@
         2. 若它显示了而下面各屏都空白, 即可断定是条件渲染失效, 而非白屏崩溃
       功能稳定后可删。
     -->
-    <text class="ver">v1.1.2 {{ bootInfo }}</text>
+    <text class="ver">v1.1.4 {{ bootInfo }}</text>
 
     <!-- ============ 加载中 ============ -->
     <div if="{{ isLoading }}" class="center">
@@ -218,31 +218,40 @@
             return
           }
           self.token = token
-          self.load()
+          // 直接把 token 传进去, 不让 load 去读 this.token ——
+          // 日志里出现过 watch_get_today 少了 p_token 的 404, 而这一段是
+          // 唯一的取值来源, 用形参把这条路径钉死
+          self.load(token)
         })
         .catch(function (e) {
           self.bootInfo = 'tokErr:' + e
         })
     },
 
-    load() {
+    load(tokenArg) {
       const self = this
+      // 形参优先, 没传才回落到 data 上的值
+      const token = tokenArg || self.token
+      if (!token) {
+        self.setStage('unpaired')
+        return
+      }
       if (self.stage !== 'pickday') self.setStage('ready')
       self.setBanner('')
 
       sync
-        .loadToday(self.token, self.weekday, function (payload, fromCache) {
+        .loadToday(token, self.weekday, function (payload, fromCache) {
           self.applyPlan(payload)
           if (fromCache) self.setBanner('离线数据')
         })
         .then(function () {
           self.setBanner('')
           // 顺手把攒下的离线记录补传
-          return sync.flushPending(self.token).then(function (n) {
+          return sync.flushPending(token).then(function (n) {
             if (n > 0) {
               self.setBanner('已补传 ' + n + ' 条')
               // 补传后服务端状态变了, 重新拉一次
-              return api.getToday(self.token, self.weekday).then(function (p) {
+              return api.getToday(token, self.weekday).then(function (p) {
                 self.applyPlan(p)
               })
             }

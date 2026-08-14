@@ -153,10 +153,23 @@ function once(fn, params) {
         }
       },
       fail: function (data, code) {
-        // 不要把原始错误吞掉 —— 手表上没别的手段可查, 全靠这里回传
+        // 不要把原始错误吞掉 —— 手表上没别的手段可查, 全靠这里回传。
+        // 实测 HTTP 4xx 也走这个回调, 且 data 里通常没有响应体, 所以
+        // code 才是唯一可靠的信息, 上层要按它判断(见 Pair 页对 400 的处理)。
         const detail = typeof data === 'string' ? data : JSON.stringify(data)
         console.log('[api] fail ' + fn + ' code=' + code + ' data=' + detail)
-        reject({ code: code === undefined ? -1 : code, message: 'net' + code + ' ' + detail })
+        // 万一固件把响应体给了过来, 优先用后端的 message
+        let msg = ''
+        if (typeof data === 'string' && data.indexOf('message') >= 0) {
+          try {
+            const o = JSON.parse(data)
+            if (o && o.message) msg = o.message
+          } catch (e) {}
+        }
+        reject({
+          code: code === undefined ? -1 : code,
+          message: msg || 'net' + code + ' ' + detail,
+        })
       },
       })
     } catch (e) {
@@ -210,11 +223,29 @@ export function redeemCode(code) {
 }
 
 /**
+ * token 体检 —— 不合格就本地拦下, 不要发出去。
+ *
+ * JSON.stringify 会把值为 undefined 的字段整个丢掉, 于是 { p_token: undefined }
+ * 发出去就成了 {"p_weekday":null}, PostgREST 找不到匹配签名, 回的是 404
+ * (实测日志里就有这么一条), 排查时极具误导性 —— 看着像接口没部署。
+ * 这里统一转成 'invalid token', isUnpaired() 认得它, 上层会清 token 回配对页。
+ */
+function requireToken(token) {
+  if (typeof token !== 'string' || token.length < 32) {
+    console.log('[api] token 不合格, 本地拦截 type=' + typeof token)
+    return Promise.reject({ code: 401, message: 'invalid token' })
+  }
+  return null
+}
+
+/**
  * 取训练计划
  * @param {string} token
  * @param {number|null} weekday 1=周一..7=周日; null = 服务端按今天判断
  */
 export function getToday(token, weekday) {
+  const bad = requireToken(token)
+  if (bad) return bad
   return rpc('watch_get_today', {
     p_token: token,
     p_weekday: weekday === undefined ? null : weekday,
@@ -223,6 +254,8 @@ export function getToday(token, weekday) {
 
 /** 批量提交训练记录 (离线补传时一次发多条) */
 export function submitLogs(token, logs) {
+  const bad = requireToken(token)
+  if (bad) return bad
   return rpc('watch_submit_logs', { p_token: token, p_logs: logs })
 }
 

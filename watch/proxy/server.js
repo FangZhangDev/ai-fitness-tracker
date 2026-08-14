@@ -15,10 +15,24 @@
  *
  * 于是: 手表用 http 打这台服务，由这台服务用 https 转发给 Supabase。
  *
+ * 三个关键设计(都是被真机坑出来的，别随手删):
+ *
+ *   1. 复用上游连接 + 定时预热
+ *      校园网到 Supabase 实测 total 1.2s / 2.5s / 9.8s，光 TLS 握手就要
+ *      0.6~2.2s。每来一个请求新建一条 TLS 连接的话，手表侧(经手机蓝牙代理)
+ *      大约 5 秒就会超时重发。keepAlive agent + 40s 保温，稳定态只剩一个 RTT。
+ *
+ *   2. 配对码兑换幂等
+ *      手机蓝牙代理会自作主张重发超时的 POST(实测日志: 一次 200，9 秒后
+ *      同一个码再来一次 400)。而 watch_redeem_pairing_code 是一次性的，
+ *      重发必然 "code invalid or expired" —— 表现为「网页显示已绑定、手表却
+ *      报 400」。这里按配对码合并并发、缓存成功结果 10 分钟，重发拿回同一 token。
+ *
  * 安全设计:
  *   - 只转发写死的 Supabase 域名，且路径必须匹配白名单里的三个 RPC 函数，
  *     不会沦为任何人都能用的开放代理
  *   - 不持有任何密钥: apikey 由手表带上来原样透传，本服务不存储、不打印
+ *   - 幂等缓存里短暂持有明文 token(<=10 分钟)，只在内存，重启即清空
  *   - 请求体大小上限，防止被灌垃圾
  *
  * 零第三方依赖，Node.js 14+ 直接跑。
@@ -47,7 +61,9 @@ const ALLOWED_RPC = [
 ]
 
 const MAX_BODY = 256 * 1024 // 256KB, 训练记录远小于此
-const UPSTREAM_TIMEOUT = 20000
+const UPSTREAM_TIMEOUT = 15000
+const WARM_INTERVAL = 40000 // 保温间隔
+const REDEEM_TTL = 600000 // 配对结果幂等缓存时长, 与配对码有效期同量级
 
 function log(level, message, kv) {
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 19)
@@ -60,12 +76,127 @@ function log(level, message, kv) {
 
 const upstream = new URL(SUPABASE_URL)
 
+// keepAlive: 复用 TLS 连接，这是本服务延迟的大头
+const agent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 20000,
+  maxSockets: 4,
+  maxFreeSockets: 4,
+})
+
+/** 打上游, resolve 成 { status, body:Buffer } */
+function upstreamRequest(method, path, body, headers) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: upstream.hostname,
+        port: 443,
+        path: path,
+        method: method,
+        headers: headers,
+        agent: agent,
+        timeout: UPSTREAM_TIMEOUT,
+      },
+      (res) => {
+        const chunks = []
+        res.on('data', (c) => chunks.push(c))
+        res.on('end', () =>
+          resolve({ status: res.statusCode || 502, body: Buffer.concat(chunks) })
+        )
+      }
+    )
+    req.on('timeout', () => {
+      req.destroy(new Error('upstream timeout'))
+    })
+    req.on('error', reject)
+    if (body && body.length) req.write(body)
+    req.end()
+  })
+}
+
+/** 后台保温: 让 agent 里始终留着一条握好手的连接 */
+setInterval(() => {
+  const started = Date.now()
+  upstreamRequest('GET', '/rest/v1/', null, { Accept: 'application/json' })
+    .then((r) => {
+      const ms = Date.now() - started
+      if (ms > 1500) log('WARN', '保温偏慢', { status: r.status, ms: ms })
+    })
+    .catch((e) => log('WARN', '保温失败', { err: e.message }))
+}, WARM_INTERVAL).unref()
+
+/**
+ * 标量返回值包装。
+ * watch_redeem_pairing_code 在 PostgREST 侧返回的是标量 JSON, 形如 "abc123"。
+ * 蓝河 fetch 对这类标量的解析不可控(手表侧会拿到对象, String() 后变成
+ * "[object Object]"), 统一包成 {"token": "..."} 最稳。
+ */
+function wrapToken(buf) {
+  try {
+    const tok = JSON.parse(buf.toString('utf8'))
+    if (typeof tok === 'string') return Buffer.from(JSON.stringify({ token: tok }))
+  } catch (e) {}
+  return buf
+}
+
+/** 出错时用来定位: 只记参数名, 绝不记参数值(里面是 token) */
+function paramNames(buf) {
+  try {
+    const obj = JSON.parse(buf.toString('utf8'))
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      return Object.keys(obj).sort().join(',') || '空'
+    }
+    return typeof obj
+  } catch (e) {
+    return '非JSON'
+  }
+}
+
+// -- 配对码兑换的幂等层 ------------------------------------------------------
+const redeemCache = new Map() // code -> { until, status, body }
+const redeemInflight = new Map() // code -> Promise
+
+function redeemCacheGet(code) {
+  const now = Date.now()
+  for (const [k, v] of redeemCache) if (v.until <= now) redeemCache.delete(k)
+  return redeemCache.get(code) || null
+}
+
+function doRedeem(code, body, headers) {
+  const hit = redeemCacheGet(code)
+  if (hit) return Promise.resolve({ status: hit.status, body: hit.body, cached: true })
+
+  const running = redeemInflight.get(code)
+  if (running) return running
+
+  const p = upstreamRequest(
+    'POST',
+    '/rest/v1/rpc/watch_redeem_pairing_code',
+    body,
+    headers
+  )
+    .then((r) => {
+      let out = r.body
+      if (r.status >= 200 && r.status < 300) {
+        out = wrapToken(out)
+        // 只缓存成功结果: 码本来就错的话不该被缓存成永久错误
+        redeemCache.set(code, { until: Date.now() + REDEEM_TTL, status: r.status, body: out })
+      }
+      return { status: r.status, body: out, cached: false }
+    })
+    .finally(() => redeemInflight.delete(code))
+
+  redeemInflight.set(code, p)
+  return p
+}
+
 function send(res, code, body, type) {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body)
   res.writeHead(code, {
     'Content-Type': type || 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
+    'Content-Length': buf.length,
   })
-  res.end(body)
+  res.end(buf)
 }
 
 const server = http.createServer((req, res) => {
@@ -123,60 +254,45 @@ const server = http.createServer((req, res) => {
       headers['Authorization'] = req.headers['authorization']
     }
 
-    const upReq = https.request(
-      {
-        hostname: upstream.hostname,
-        port: 443,
-        path: '/rest/v1/rpc/' + fn,
-        method: 'POST',
-        headers: headers,
-        timeout: UPSTREAM_TIMEOUT,
-      },
-      (upRes) => {
-        const outChunks = []
-        upRes.on('data', (c) => outChunks.push(c))
-        upRes.on('end', () => {
-          let out = Buffer.concat(outChunks)
-          // 标量返回值包装, 理由同 server.py: 蓝河 fetch 对标量 JSON 的解析
-          // 不可控(手表侧会拿到对象), 统一包成 {"token": "..."} 最稳
-          const st = upRes.statusCode || 0
-          if (fn === 'watch_redeem_pairing_code' && st >= 200 && st < 300) {
-            try {
-              const tok = JSON.parse(out.toString('utf8'))
-              if (typeof tok === 'string') {
-                out = Buffer.from(JSON.stringify({ token: tok }))
-              }
-            } catch (e) {}
-          }
-          log('INFO', '转发完成', {
-            fn: fn,
-            status: upRes.statusCode,
-            bytes: out.length,
-            ms: Date.now() - started,
-          })
-          res.writeHead(upRes.statusCode || 502, {
-            'Content-Type':
-              upRes.headers['content-type'] || 'application/json; charset=utf-8',
-            'Content-Length': out.length,
-          })
-          res.end(out)
-        })
-      }
-    )
+    // 兑换配对码走幂等层, 其余直通
+    let code = null
+    if (fn === 'watch_redeem_pairing_code') {
+      try {
+        const obj = JSON.parse(body.toString('utf8'))
+        if (obj && typeof obj.p_code === 'string' && obj.p_code) code = obj.p_code
+      } catch (e) {}
+    }
 
-    upReq.on('timeout', () => {
-      log('ERROR', '上游超时', { fn: fn })
-      upReq.destroy()
-      if (!res.headersSent) send(res, 504, JSON.stringify({ message: 'upstream timeout' }))
-    })
+    const task = code
+      ? doRedeem(code, body, headers)
+      : upstreamRequest('POST', '/rest/v1/rpc/' + fn, body, headers).then((r) => ({
+          status: r.status,
+          body: fn === 'watch_redeem_pairing_code' && r.status >= 200 && r.status < 300
+            ? wrapToken(r.body)
+            : r.body,
+          cached: false,
+        }))
 
-    upReq.on('error', (e) => {
-      log('ERROR', '上游错误', { fn: fn, err: e.message })
-      if (!res.headersSent) send(res, 502, JSON.stringify({ message: 'upstream error' }))
-    })
-
-    upReq.write(body)
-    upReq.end()
+    task
+      .then((r) => {
+        const kv = {
+          fn: fn,
+          status: r.status,
+          bytes: r.body.length,
+          ms: Date.now() - started,
+        }
+        if (r.status >= 400) {
+          // 4xx/5xx 时补上参数名(不含值), 否则事后看不出是哪一步传错了 ——
+          // 曾出现 watch_get_today 404, 就是 token 没带上导致函数签名对不上
+          kv.params = paramNames(body)
+        }
+        log('INFO', r.cached ? '配对重发, 返回缓存结果' : '转发完成', kv)
+        send(res, r.status, r.body)
+      })
+      .catch((e) => {
+        log('ERROR', '上游错误', { fn: fn, err: e.message })
+        if (!res.headersSent) send(res, 502, JSON.stringify({ message: 'upstream error' }))
+      })
   })
 })
 

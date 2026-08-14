@@ -7,7 +7,7 @@
     class="page"
     id="root"
     focusable="true"
-    rotation-sensitivity="2"
+    rotation-sensitivity="1"
     @rotation="onRotation"
   >
     <!-- 动作名 -->
@@ -49,6 +49,7 @@
   import * as store from '../../common/store.js'
   import * as device from '../../common/device.js'
   import * as screen from '../../common/screen.js'
+  import { createRotary } from '../../common/rotary.js'
 
   const FIELDS = [
     { key: 'weight', label: '重量', unit: 'kg' },
@@ -61,12 +62,11 @@
     return String(Math.round(n * 100) / 100)
   }
 
-  // 表冠节流: 攒够这么多步进才动一次, 数值越大越迟钝(同 Pair 页)。
-  // Record 调的是连续值(重量 0.5kg 一格), 不能像 Pair 那样攒 8 才动 1 格
-  // (那样从 0 到 60kg 要转到手酸); 但不能为 1 -- 轻转一下触发多个事件,
-  // 数字会"嗖"地窜过去(用户痛点: 转很小, 数字增减太快)。3 为折中, 真机实测后微调。
-  const ROTATE_STEP = 3
-  let rotateAcc = 0
+  // 表冠节流: 见 common/rotary.js。这一页调的是重量, 转过头要退回来很烦,
+  // 所以给的是全局最钝的一档 —— 攒够 4 个旋转事件才动一格, 且封顶
+  // 每 180ms 一格(约 5.5 格/秒, 重量即 2.75kg/秒), 转多快都突破不了。
+  // 嫌慢就调小这两个数, 这是唯一的旋钮。
+  const rotary = createRotary({ step: 4, cooldown: 180 })
 
   export default {
     // 蓝河只认 data —— private/protected/public 在真机上不生效。
@@ -137,26 +137,19 @@
 
     /**
      * 表冠旋转
-     * 回调给的是 { direction, delta, velocity, duration, state }
-     *   delta 通常为 ±1; 个别固件只给大小不给符号, 所以用 direction 兜底
-     *   velocity 高时加大步进 —— 从 20kg 转到 80kg 不至于转到手酸
+     * 回调给的是 { direction, delta, velocity, duration, state }, 节流全交给
+     * rotary, 这里只管把方向换算成数值。
+     *
+     * 注意: 曾经有一档「velocity > 15 就步进 ×4」的加速逻辑, 已删除。
+     * 它和 delta 原样累加叠在一起, 手腕一带就是 2kg 起跳, 是数字窜飞的主因。
+     * 记录页的初值本来就预填成历史最大重量, 只需小幅微调, 不需要加速档。
      */
     onRotation(e) {
-      if (!e || e.state === 3) return // 3 = 旋转结束, 不重复计数
+      const dir = rotary.feed(e)
+      if (!dir) return
 
-      let d = e.delta
-      if (!d) d = e.direction ? -1 : 1
-
-      // 反向时立即清零, 免得残留的反向累积让第一下没反应
-      if ((d > 0) !== (rotateAcc > 0)) rotateAcc = 0
-      rotateAcc += d
-      if (Math.abs(rotateAcc) < ROTATE_STEP) return
-      const dir = rotateAcc > 0 ? 1 : -1
-      rotateAcc = 0
-
-      const fast = e.velocity && Math.abs(e.velocity) > 15 ? 4 : 1
       const key = FIELDS[this.fieldIdx].key
-      const step = CONFIG.STEP[key] * fast
+      const step = CONFIG.STEP[key]
       const range = CONFIG.RANGE[key]
 
       let next = this.vals[key] + dir * step
@@ -171,6 +164,8 @@
 
     setField(idx) {
       this.fieldIdx = idx
+      // 换了字段就清账, 免得上一个字段攒下的旋转量落到新字段上
+      rotary.reset()
       this.refresh()
     },
 
