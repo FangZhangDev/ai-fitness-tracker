@@ -24,7 +24,7 @@ export const CONFIG = {
   // 因此改由 proxy/server.js 中转: 手表 --http--> 转发服务 --https--> Supabase。
   // 部署好服务器后，把下面这行换成你的 `http://IP:端口`，其余代码无需改动。
   // ===========================================================================
-  API_BASE: 'http://CHANGE_ME:8080',
+  API_BASE: 'http://10.39.15.143:8080',
 
   // 下面两项供网络自检对照用; ANON_KEY 会由手表透传给转发服务
   SUPABASE_URL: 'https://brizffqttkhuktpqlcie.supabase.co',
