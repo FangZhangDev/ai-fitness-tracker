@@ -19,6 +19,11 @@ import { CONFIG } from '../config.js'
 // 静态 import 一个真机上不存在的 feature 会让整个模块加载失败,
 // 进而拖垮引用它的页面(表现为页面 JS 完全不执行, 只剩静态元素渲染)。
 // require 失败只是拿不到该模块, 不影响其余代码。
+// 网络状态: getType() 直接回答「手表现在有没有网」, 比打请求更直接。
+// 返回值可能为 2g/3g/4g/5g/wifi/bluetooth/none/others —— 手表经手机联网时为 bluetooth。
+let _netMgr = null
+try { _netMgr = require('@blueos.network.networkManager') } catch (e) {}
+
 let fetchA = null, fetchB = null, fetchC = null
 try { fetchA = require('@blueos.network.fetch') } catch (e) {}
 try { fetchB = require('@system.fetch') } catch (e) {}
@@ -231,6 +236,37 @@ export function isUnpaired(err) {
  *   db:401     目标域名可达(未带 apikey 返回 401 属正常)
  * 出现 E<code> 即该项失败, 对照可判断是完全没网 / TLS 不通 / 仅目标域名不通。
  */
+/** 查询当前网络类型; 拿不到返回 '?' */
+function netType() {
+  return new Promise(function (resolve) {
+    const m = _netMgr && (typeof _netMgr.getType === 'function' ? _netMgr : _netMgr.default)
+    if (!m || typeof m.getType !== 'function') {
+      resolve('模块无')
+      return
+    }
+    let done = false
+    setTimeout(function () {
+      if (!done) { done = true; resolve('超时') }
+    }, 4000)
+    try {
+      m.getType({
+        success: function (d) {
+          if (done) return
+          done = true
+          resolve((d && d.type) || '空')
+        },
+        fail: function (d, c) {
+          if (done) return
+          done = true
+          resolve('E' + c)
+        },
+      })
+    } catch (e) {
+      if (!done) { done = true; resolve('异常') }
+    }
+  })
+}
+
 export function selfTest() {
   const f = getFetch()
   if (!f) return Promise.resolve('fetch模块不可用')
@@ -243,7 +279,11 @@ export function selfTest() {
   const out = []
 
   function step(i) {
-    if (i >= targets.length) return Promise.resolve(out.join('  '))
+    if (i >= targets.length) {
+      return netType().then(function (nt) {
+        return 'net:' + nt + '  ' + out.join('  ')
+      })
+    }
     return new Promise(function (resolve) {
       let done = false
       const guard = setTimeout(function () {
