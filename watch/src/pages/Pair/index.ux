@@ -98,11 +98,16 @@
         })
         .catch(function (e) {
           self.busy = false
-          // 后端对过期/用过的码统一抛 code invalid or expired
-          self.err =
-            e && e.message && e.message.indexOf('code invalid') >= 0
-              ? '配对码无效或已过期'
-              : '连不上, 检查手机蓝牙'
+          const m = (e && e.message) || '未知错误'
+          if (m.indexOf('code invalid') >= 0) {
+            // 后端对过期/用过的码统一抛 code invalid or expired
+            self.err = '配对码无效或已过期'
+          } else if (m.indexOf('fetch模块') >= 0) {
+            self.err = 'fetch 模块未加载, 见日志'
+          } else {
+            // 其余一律原样显示 —— 手表上没有别的排查手段
+            self.err = m.substring(0, 46)
+          }
         })
     },
   }
@@ -154,10 +159,13 @@
   }
 
   .err {
-    margin-top: 14px;
-    height: 28px;
-    font-size: 22px;
+    margin-top: 12px;
+    width: 400px;
+    font-size: 20px;
     color: #ff453a;
+    text-align: center;
+    lines: 2;
+    text-overflow: ellipsis;
   }
 
   .btn {

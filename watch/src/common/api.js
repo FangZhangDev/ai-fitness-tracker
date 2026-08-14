@@ -43,9 +43,10 @@ function once(fn, params) {
   return new Promise(function (resolve, reject) {
     const f = getFetch()
     if (!f) {
-      reject({ code: -1, message: '当前环境不支持网络请求' })
+      reject({ code: -1, message: 'fetch模块不可用' })
       return
     }
+    console.log('[api] -> ' + fn)
     f.fetch({
       url: CONFIG.SUPABASE_URL + '/rest/v1/rpc/' + fn,
       method: 'POST',
@@ -68,14 +69,19 @@ function once(fn, params) {
           }
         }
         if (res.code >= 200 && res.code < 300) {
+          console.log('[api] <- ' + fn + ' ok')
           resolve(body)
         } else {
           const msg = (body && (body.message || body.hint)) || '请求失败'
+          console.log('[api] <- ' + fn + ' http' + res.code + ' ' + msg)
           reject({ code: res.code, message: msg })
         }
       },
       fail: function (data, code) {
-        reject({ code: code, message: '网络不可用' })
+        // 不要把原始错误吞掉 —— 手表上没别的手段可查, 全靠这里回传
+        const detail = typeof data === 'string' ? data : JSON.stringify(data)
+        console.log('[api] fail ' + fn + ' code=' + code + ' data=' + detail)
+        reject({ code: code === undefined ? -1 : code, message: 'net' + code + ' ' + detail })
       },
     })
   })
