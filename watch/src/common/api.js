@@ -21,16 +21,23 @@ import { CONFIG } from '../config.js'
 //  2. require 拿到的是整个模块对象, 真正的 API 可能包在 default 里
 //     (store.js 用 `import storage from` 取的是 default, 所以一直正常;
 //      这里用 require 就拿到了外层对象, 直接 .fetch() 会报 not a function)
-let _mod = null
-let _fetchName = ''
-try {
-  _mod = require('@blueos.communication.network.fetch')
-  _fetchName = '@blueos.communication.network.fetch'
-} catch (e) {}
+// 主路径用静态 import —— store.js 的 `import storage from '@blueos.storage.storage'`
+// 被实测证明可用, 而同样目标用 require 一直拿不到, 所以这里跟它保持一致。
+// 另一个名字仍用 require 兜底。
+import fetchMod from '@blueos.communication.network.fetch'
+
+let _mod = fetchMod || null
+let _fetchName = fetchMod ? '@blueos.communication.network.fetch(import)' : ''
+if (!_mod) {
+  try {
+    _mod = require('@blueos.communication.network.fetch')
+    _fetchName = '@blueos.communication.network.fetch(require)'
+  } catch (e) {}
+}
 if (!_mod) {
   try {
     _mod = require('@blueos.network.fetch')
-    _fetchName = '@blueos.network.fetch'
+    _fetchName = '@blueos.network.fetch(require)'
   } catch (e) {}
 }
 
@@ -62,6 +69,20 @@ console.log(
 
 function getFetch() {
   return _fetchFn
+}
+
+/**
+ * 一行诊断文本, 直接显示到手表屏幕上。
+ * 手表上翻 DevTools 不方便, 出问题时把模块的真实形状摆到界面上最省事。
+ */
+export function diagText() {
+  if (_fetchFn) return 'fetch ok: ' + _fetchName
+  if (!_mod) return 'fetch模块为空(import与require都没拿到)'
+  let s = 'fetch结构 ' + typeof _mod + ':' + Object.keys(_mod).join(',')
+  if (_mod.default) {
+    s += ' | default ' + typeof _mod.default + ':' + Object.keys(_mod.default).join(',')
+  }
+  return s
 }
 
 /** 网络是否可用 (feature 拿不到就是环境不支持) */

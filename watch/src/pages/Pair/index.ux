@@ -40,6 +40,8 @@
 
     onInit() {
       this.refresh()
+      // 进页面就自检一次: fetch 拿不到的话直接把模块结构显示出来
+      if (!api.networkAvailable()) this.err = api.diagText()
     },
 
     onReady() {
@@ -103,7 +105,8 @@
             // 后端对过期/用过的码统一抛 code invalid or expired
             self.err = '配对码无效或已过期'
           } else if (m.indexOf('fetch模块') >= 0) {
-            self.err = 'fetch 模块未加载, 见日志'
+            // 直接把模块真实结构摆到屏幕上, 省得去翻 DevTools
+            self.err = api.diagText()
           } else {
             // 其余一律原样显示 —— 手表上没有别的排查手段
             self.err = m.substring(0, 46)
@@ -159,12 +162,12 @@
   }
 
   .err {
-    margin-top: 12px;
-    width: 400px;
-    font-size: 20px;
+    margin-top: 10px;
+    width: 410px;
+    font-size: 17px;
     color: #ff453a;
     text-align: center;
-    lines: 2;
+    lines: 4;
     text-overflow: ellipsis;
   }
 
