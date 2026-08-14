@@ -272,6 +272,9 @@ export type WatchTodayExercise = {
   rest: string | null;
   cues: string | null;
   equipment: string | null;
+  // 历史最大重量与最好 1RM (0005 迁移新增)，手表用 max_weight_kg 作为预填默认值
+  max_weight_kg: number | null;
+  best_1rm_kg: number | null;
   last_weight_kg: number | null;
   last_sets: number | null;
   last_reps: number | null;

@@ -114,8 +114,10 @@
       return parts.join('  ')
     }
     const parts = []
-    const lw = fmtNum(e.last_weight_kg)
-    if (lw) parts.push(lw + 'kg')
+    // 显示历史最大重量(与记录页的预填值一致), 而不是上次那条 ——
+    // 上次可能是减量周或状态差, 最好成绩更贴近「今天要冲多少」
+    const bw = fmtNum(e.max_weight_kg)
+    if (bw) parts.push(bw + 'kg')
     if (e.target_sets) {
       let reps = ''
       if (e.rep_min && e.rep_max) {
@@ -246,8 +248,8 @@
       device.push('/pages/Record', {
         exercise: e.exercise,
         workoutDay: this.title,
-        // 预填: 已记录过就用实际值, 否则用上次的值, 再否则用计划目标
-        weight: fmtNum(e.done ? e.done_weight_kg : e.last_weight_kg) || '0',
+        // 预填重量: 已记录过用今天实际值, 否则用历史最大重量, 从没练过则 0
+        weight: fmtNum(e.done ? e.done_weight_kg : e.max_weight_kg) || '0',
         sets: String(e.done ? e.done_sets || 0 : e.target_sets || e.last_sets || 3),
         reps: String(e.done ? e.done_reps || 0 : e.rep_min || e.last_reps || 8),
         rir: String(
