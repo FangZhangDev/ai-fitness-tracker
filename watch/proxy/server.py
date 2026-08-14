@@ -133,6 +133,20 @@ class Handler(BaseHTTPRequestHandler):
             self._send(502, {"message": "upstream error"})
             return
 
+        # ── 标量返回值包装 ────────────────────────────────────────────────
+        # watch_redeem_pairing_code 在 PostgREST 侧返回的是标量 JSON, 形如
+        # "abc123"(带引号的字符串)。蓝河 fetch 对这类标量的解析不可控 ——
+        # 实测手表拿到的是对象, String() 后变成 "[object Object]"(15 字符),
+        # 于是被判为无效 token。
+        # 这里统一包成 {"token": "..."} , 无论框架如何解析都能稳定取到 .token。
+        if fn == "watch_redeem_pairing_code" and 200 <= status < 300:
+            try:
+                tok = json.loads(out.decode("utf-8"))
+                if isinstance(tok, str):
+                    out = json.dumps({"token": tok}).encode()
+            except Exception:
+                pass
+
         log(
             "INFO",
             "转发完成",

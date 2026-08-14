@@ -189,12 +189,22 @@ function rpc(fn, params) {
  */
 export function redeemCode(code) {
   return rpc('watch_redeem_pairing_code', { p_code: code }).then(function (v) {
-    let s = typeof v === 'string' ? v : v === null || v === undefined ? '' : String(v)
+    // 转发服务已把标量 token 包成 {"token": "..."} —— 蓝河 fetch 对标量 JSON
+    // 的解析不可控(实测手表侧拿到的是对象, String() 后成了 "[object Object]"),
+    // 包一层对象后无论框架怎么解析都能稳定取到。
+    let s = ''
+    if (v && typeof v === 'object' && typeof v.token === 'string') {
+      s = v.token
+    } else if (typeof v === 'string') {
+      s = v
+    } else if (v !== null && v !== undefined) {
+      s = String(v)
+    }
     s = s.trim()
     if (s.length >= 2 && s.charAt(0) === '"' && s.charAt(s.length - 1) === '"') {
       s = s.substring(1, s.length - 1)
     }
-    console.log('[api] token 长度=' + s.length)
+    console.log('[api] token 长度=' + s.length + ' 原始类型=' + typeof v)
     return s
   })
 }

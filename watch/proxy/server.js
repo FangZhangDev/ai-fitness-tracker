@@ -136,7 +136,18 @@ const server = http.createServer((req, res) => {
         const outChunks = []
         upRes.on('data', (c) => outChunks.push(c))
         upRes.on('end', () => {
-          const out = Buffer.concat(outChunks)
+          let out = Buffer.concat(outChunks)
+          // 标量返回值包装, 理由同 server.py: 蓝河 fetch 对标量 JSON 的解析
+          // 不可控(手表侧会拿到对象), 统一包成 {"token": "..."} 最稳
+          const st = upRes.statusCode || 0
+          if (fn === 'watch_redeem_pairing_code' && st >= 200 && st < 300) {
+            try {
+              const tok = JSON.parse(out.toString('utf8'))
+              if (typeof tok === 'string') {
+                out = Buffer.from(JSON.stringify({ token: tok }))
+              }
+            } catch (e) {}
+          }
           log('INFO', '转发完成', {
             fn: fn,
             status: upRes.statusCode,
