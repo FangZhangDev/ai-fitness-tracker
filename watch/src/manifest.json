@@ -5,7 +5,7 @@
   "versionName": "1.0.0",
   "versionCode": 1,
   "minPlatformVersion": 1070,
-  "deviceTypeList": ["watch"],
+  "deviceTypeList": ["watch", "watch-round"],
   "appCategory": ["sports"],
   "features": [
     { "name": "blueos.app.appmanager.router" },
@@ -23,9 +23,7 @@
     "logLevel": "log"
   },
   "display": {
-    "backgroundColor": "#000000",
-    "titleBar": false,
-    "fullScreen": true
+    "backgroundColor": "#000000"
   },
   "router": {
     "entry": "pages/Today",
