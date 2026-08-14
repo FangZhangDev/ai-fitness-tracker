@@ -41,7 +41,7 @@
       </div>
 
       <!-- 离线/同步状态, 只在有异常时占位 -->
-      <text if="{{ banner }}" class="banner">{{ banner }}</text>
+      <text if="{{ banner }}" class="banner" onclick="boot">{{ banner }}</text>
 
       <!-- 今天没有安排 -->
       <div if="{{ totalCount === 0 }}" class="center-rest">
@@ -176,7 +176,7 @@
             self.banner = '离线中'
           } else {
             const m = (err && err.message) || '未知错误'
-            self.banner = String(m).substring(0, 40)
+            self.banner = String(m).substring(0, 36) + ' (点此重试)'
           }
         })
     },

@@ -107,7 +107,10 @@ function once(fn, params) {
       return
     }
     console.log('[api] -> ' + fn)
-    f({
+    // fetch 本身也可能同步抛异常(参数不合法、模块内部错误), 不接住的话
+    // Promise 会以一个非预期的 Error 结束, 上层拿不到有用信息
+    try {
+      f({
       url: CONFIG.SUPABASE_URL + '/rest/v1/rpc/' + fn,
       method: 'POST',
       // 一律按 text 收, 再自己 JSON.parse。
@@ -153,7 +156,11 @@ function once(fn, params) {
         console.log('[api] fail ' + fn + ' code=' + code + ' data=' + detail)
         reject({ code: code === undefined ? -1 : code, message: 'net' + code + ' ' + detail })
       },
-    })
+      })
+    } catch (e) {
+      console.log('[api] fetch 同步抛异常 ' + fn + ': ' + e)
+      reject({ code: -2, message: 'fetch异常:' + e })
+    }
   })
 }
 
