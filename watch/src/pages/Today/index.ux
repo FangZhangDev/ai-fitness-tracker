@@ -196,7 +196,7 @@
     openRecord(idx) {
       const e = this.exercises[idx]
       if (!e) return
-      device.push('/record', {
+      device.push('/pages/Record', {
         exercise: e.exercise,
         workoutDay: this.title,
         // 预填: 已记录过就用实际值, 否则用上次的值, 再否则用计划目标
@@ -233,7 +233,7 @@
     },
 
     goPair() {
-      if (!device.push('/pair')) {
+      if (!device.push('/pages/Pair')) {
         // 路由模块没拿到时不要静默失败, 否则表现为「按钮点不动」
         this.pairHint = '路由不可用, 请查看 DevTools 日志'
       }

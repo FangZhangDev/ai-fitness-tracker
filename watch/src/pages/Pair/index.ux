@@ -93,7 +93,7 @@
             device.vibrate()
             self.busy = false
             // replace: 免得用户按返回又回到配对页
-            device.replace('/')
+            device.replace('/pages/Today')
           })
         })
         .catch(function (e) {

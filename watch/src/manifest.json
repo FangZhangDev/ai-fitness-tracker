@@ -30,16 +30,13 @@
     "entry": "pages/Today",
     "pages": {
       "pages/Today": {
-        "component": "index",
-        "path": "/"
+        "component": "index"
       },
       "pages/Record": {
-        "component": "index",
-        "path": "/record"
+        "component": "index"
       },
       "pages/Pair": {
-        "component": "index",
-        "path": "/pair"
+        "component": "index"
       }
     }
   }
