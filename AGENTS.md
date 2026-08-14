@@ -50,21 +50,16 @@ vercel ls ai-fitness-tracker | head -5   # 最新一条应为 ● Ready / Produc
 curl -s -o /dev/null -w '%{http_code}\n' https://ai-fitness-tracker-murex.vercel.app/login   # 200
 ```
 
-### 手动直传 vs 连 GitHub 自动部署
+### 已定：就用手动 `vercel --prod`，**不要连 GitHub**
 
-| | CLI 直传（现状） | 连 GitHub |
-|---|---|---|
-| 触发 | 手动跑命令 | push 到 main 即部署 |
-| 漏发布 | **容易**——推了代码忘了部署，线上悄悄落后 | 不会 |
-| 预览环境 | 无 | 每个分支/PR 一个预览地址 |
-| 依赖的网络 | 本机 → Vercel | Vercel → GitHub（与本机无关）|
-| 只改文档 | 不会部署 | 也会部署（无害，占点构建额度）|
+2026-08-14 用户明确决定保持手动部署。评估过连 GitHub（push 即部署、带预览环境、
+不会漏发布），但结论是不连。**别再反复建议连 GitHub**，需要时用户会自己说。
 
-**建议连 GitHub**，一条命令，连上后 `vercel --prod` 仍可用作临时发布：
+代价是「推了代码忘了部署」，所以约定死一条规矩：
 
-```bash
-vercel git connect https://github.com/FangZhangDev/ai-fitness-tracker
-```
+> **只要这次改动碰了 `app/` `components/` `lib/` `proxy.ts` `public/`，
+> 提交之后就要跑一次 `vercel --prod --yes`，并在汇报里写明部署结果。**
+> 只改了 `watch/`、`supabase/`、文档，就别跑，也别说「等待上线」。
 
 ### 环境变量
 
