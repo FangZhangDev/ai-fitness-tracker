@@ -86,16 +86,30 @@
       api
         .redeemCode(code)
         .then(function (token) {
-          if (!token || typeof token !== 'string') {
+          // token 是 64 位十六进制; 长度不对说明返回值被框架处理成了别的东西
+          if (!token || token.length < 32) {
             self.busy = false
-            self.err = '配对码无效'
+            self.err = '返回异常 len=' + (token ? token.length : 0)
             return
           }
-          return store.setToken(token).then(function () {
-            device.vibrate()
-            self.busy = false
-            // replace: 免得用户按返回又回到配对页
-            device.replace('/pages/Today')
+          return store.setToken(token).then(function (ok) {
+            if (!ok) {
+              self.busy = false
+              self.err = '保存失败 ' + store.storageDiag()
+              return
+            }
+            // 写后立刻读回来确认 —— 否则跳过去才发现没存住, 又得重配一次
+            return store.getToken().then(function (back) {
+              if (!back) {
+                self.busy = false
+                self.err = '存了读不回 ' + store.storageDiag()
+                return
+              }
+              device.vibrate()
+              self.busy = false
+              // replace: 免得用户按返回又回到配对页
+              device.replace('/pages/Today')
+            })
           })
         })
         .catch(function (e) {

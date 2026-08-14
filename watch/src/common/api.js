@@ -110,7 +110,11 @@ function once(fn, params) {
     f({
       url: CONFIG.SUPABASE_URL + '/rest/v1/rpc/' + fn,
       method: 'POST',
-      responseType: 'json',
+      // 一律按 text 收, 再自己 JSON.parse。
+      // 用 'json' 时框架对「标量返回值」的处理不可控 —— 后端
+      // watch_redeem_pairing_code 返回的是 text, PostgREST 输出为 "abc123"
+      // 这种带引号的 JSON 字符串, 曾因此拿到非字符串值而误报「配对码无效」。
+      responseType: 'text',
       timeout: CONFIG.TIMEOUT,
       header: {
         'Content-Type': 'application/json',
@@ -119,21 +123,27 @@ function once(fn, params) {
       },
       data: JSON.stringify(params || {}),
       success: function (res) {
-        // responseType=json 时多数情况已是对象, 但不同固件可能仍给字符串
-        let body = res.data
-        if (typeof body === 'string') {
+        const raw = res.data
+        // JSON.parse 能把 "abc" 还原成字符串 abc, 把 {...} 还原成对象;
+        // 解析失败(纯文本)就用原值
+        let body = raw
+        if (typeof raw === 'string') {
+          const t = raw.trim()
           try {
-            body = JSON.parse(body)
+            body = JSON.parse(t)
           } catch (e) {
-            // 保持原样, 交给下面的状态码判断
+            body = t
           }
         }
+        console.log(
+          '[api] <- ' + fn + ' http' + res.code + ' type=' + typeof body +
+            ' raw=' + String(raw).substring(0, 50)
+        )
         if (res.code >= 200 && res.code < 300) {
-          console.log('[api] <- ' + fn + ' ok')
           resolve(body)
         } else {
-          const msg = (body && (body.message || body.hint)) || '请求失败'
-          console.log('[api] <- ' + fn + ' http' + res.code + ' ' + msg)
+          const msg =
+            (body && (body.message || body.hint)) || String(body) || '请求失败'
           reject({ code: res.code, message: msg })
         }
       },
@@ -164,9 +174,20 @@ function rpc(fn, params) {
   return run()
 }
 
-/** 配对码 -> device token */
+/**
+ * 配对码 -> device token
+ * 后端返回的是 text, 这里统一归一成纯字符串 token, 顺带剥掉可能残留的引号。
+ */
 export function redeemCode(code) {
-  return rpc('watch_redeem_pairing_code', { p_code: code })
+  return rpc('watch_redeem_pairing_code', { p_code: code }).then(function (v) {
+    let s = typeof v === 'string' ? v : v === null || v === undefined ? '' : String(v)
+    s = s.trim()
+    if (s.length >= 2 && s.charAt(0) === '"' && s.charAt(s.length - 1) === '"') {
+      s = s.substring(1, s.length - 1)
+    }
+    console.log('[api] token 长度=' + s.length)
+    return s
+  })
 }
 
 /**
@@ -186,7 +207,14 @@ export function submitLogs(token, logs) {
   return rpc('watch_submit_logs', { p_token: token, p_logs: logs })
 }
 
-/** 后端把「token 失效」表达为 unpaired, 手表据此回到配对页 */
+/**
+ * 后端有两种「这个 token 不能用」的表达:
+ *   unpaired       token 查不到对应设备(被解绑或库里没有)
+ *   invalid token  token 为空或长度不足 32(本地存坏了)
+ * 两种都该让手表清掉本地 token 回到配对页。
+ */
 export function isUnpaired(err) {
-  return !!(err && err.message && err.message.indexOf('unpaired') >= 0)
+  if (!err || !err.message) return false
+  const m = String(err.message)
+  return m.indexOf('unpaired') >= 0 || m.indexOf('invalid token') >= 0
 }

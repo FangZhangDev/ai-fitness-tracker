@@ -9,7 +9,58 @@
  * 重复提交不会产生脏数据, 队列里同一动作只保留最后一次即可。
  */
 
-import storage from '@blueos.storage.storage'
+// 与 api.js 同样的处理: 原生模块方法不可枚举, 只能按方法名 typeof 探测;
+// feature 名也可能对不上, 所以多写候选静态 import, 运行时挑能用的。
+import storageA from '@blueos.storage.storage'
+import storageB from '@system.storage'
+
+function resolveStorage(m) {
+  if (!m) return null
+  if (typeof m.get === 'function' && typeof m.set === 'function') return m
+  if (m.default && typeof m.default.get === 'function') return m.default
+  return null
+}
+
+const STORAGE_CANDIDATES = [
+  { name: '@blueos.storage.storage', mod: storageA },
+  { name: '@system.storage', mod: storageB },
+]
+
+let storage = null
+let _storageName = ''
+for (let i = 0; i < STORAGE_CANDIDATES.length; i++) {
+  const s = resolveStorage(STORAGE_CANDIDATES[i].mod)
+  if (s) {
+    storage = s
+    _storageName = STORAGE_CANDIDATES[i].name
+    break
+  }
+}
+
+console.log('[store] storage可用=' + (_storageName || 'NO'))
+for (let i = 0; i < STORAGE_CANDIDATES.length; i++) {
+  const m = STORAGE_CANDIDATES[i].mod
+  console.log(
+    '[store]   ' + STORAGE_CANDIDATES[i].name + ' -> ' +
+      (m
+        ? 'get=' + typeof m.get + ' set=' + typeof m.set + ' delete=' + typeof m.delete
+        : 'null')
+  )
+}
+
+/** 供界面显示的诊断文本 */
+export function storageDiag() {
+  if (_storageName) return 'storage ok: ' + _storageName
+  const parts = []
+  for (let i = 0; i < STORAGE_CANDIDATES.length; i++) {
+    const m = STORAGE_CANDIDATES[i].mod
+    parts.push(
+      STORAGE_CANDIDATES[i].name.replace('@blueos.', '').replace('@', '') +
+        ':' + (m ? 'get=' + typeof m.get : 'null')
+    )
+  }
+  return parts.join(' / ')
+}
 
 const KEY = {
   TOKEN: 'device_token',
