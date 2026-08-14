@@ -27,7 +27,7 @@
    │  HTTPS, 蓝牙连手机时自动走手机代理
    ▼
 Supabase RPC  ← 直连, 不经过 Vercel
-   │  watch_redeem_pairing_code / watch_get_today / watch_submit_logs
+   │  watch_redeem_pairing_code / watch_get_week / watch_submit_logs
    ▼
 PostgreSQL (workout_plans / plan_days / plan_exercises / workout_logs)
 ```
@@ -40,8 +40,32 @@ PostgreSQL (workout_plans / plan_days / plan_exercises / workout_logs)
 数据库只存 sha256 摘要。手表持有的是 Supabase 的 **anon key**（本来就是公开的，
 所有表都有 RLS，光靠它查不到任何数据）+ device token。
 
-**离线**：今日计划整份缓存在表上，没网照常看；打勾记录先落本地队列，
-联网后自动补传。服务端对「同一天同一动作」是覆盖语义，重复补传不会产生脏数据。
+**离线**：**整周**计划缓存在表上，没网照常看，还能长按标题切到别的训练日；
+打勾记录先落本地队列，联网后自动补传。服务端对「同一天同一动作」是覆盖语义，
+重复补传不会产生脏数据。
+
+### 整周缓存 + 版本号增量校验
+
+手表没有 Wi-Fi，走蓝牙经手机上网，而转发服务多半只在家/校园网可达——
+只缓存「今天」一天的话，出门就等于没有。所以（v1.2.0 起）：
+
+1. 一次取整周 `watch_get_week`，整份存进 **一个固定的键** `week_cache`
+2. 每次联网把上次的 `version` 带上去让后端比对：
+   - **没变** → 只回 `{ unchanged: true, today_done }`，实测 **178 字节**，缓存原样留用
+   - **变了** → 回整周，手表**整份覆盖**（实测 776 字节 / 3 个训练日）
+3. 固定键 + 整份覆盖，旧数据自然被顶掉，不会越攒越多；
+   v1.1.4 及以前的 `today_cache` 键在启动时删掉
+
+`version` 由后端算，覆盖两类会影响显示的东西：**计划结构**（`plan_days` /
+`plan_exercises` 的内容与 `updated_at`）和**预填用的历史最大重量**（破 PR 要跟着变）。
+刻意**不含**「今天做了什么」——那是天天变的动态数据，放进版本号会让缓存天天失效，
+它由 `today_done` 每次单独回传，很小。
+
+离线时本地队列里今天的记录也会算成「已完成」，打的勾立刻显示，
+不至于让人以为没记上又记一遍。
+
+> 后端还没执行 `0006` 迁移时，PostgREST 会回 404（PGRST202），
+> 手表据此**自动回落**到旧的 `watch_get_today`，不会变砖。
 
 ## 目录
 
@@ -54,7 +78,8 @@ watch/
 │   ├── common/
 │   │   ├── api.js             Supabase RPC 封装 + 超时重试
 │   │   ├── store.js           K-V 存储 + 离线队列
-│   │   ├── sync.js            缓存优先加载 / 补传逻辑
+│   │   ├── sync.js            整周缓存 + 版本校验 / 补传逻辑
+│   │   ├── rotary.js          表冠节流 (灵敏度唯一调节点)
 │   │   └── device.js          路由 / 提示 / 振动 (feature 名多版本兼容)
 │   ├── pages/
 │   │   ├── Today/index.ux     今日计划 (首页)
@@ -92,6 +117,8 @@ Supabase → SQL Editor 依次执行（均可重复执行）：
 
 1. `supabase/migrations/0004_watch_pairing.sql` — 配对与三个数据接口
 2. `supabase/migrations/0005_watch_max_weight.sql` — 预填改用历史最大重量
+3. `supabase/migrations/0006_watch_week_cache.sql` — 整周计划 + 版本号增量校验
+   （v1.2.0 起需要；不执行的话手表会自动回落到单日接口，只是出门看不了别的天）
 
 ## 交互说明
 
@@ -307,10 +334,11 @@ key 写错会在编译期报 `resolve entries error, error: 4006`。
 运行期关键节点：
 
 ```
-[sync] loadToday 开始 wd=null
-[sync] 缓存阶段 hit=false
-[api] -> watch_get_today
-[api] <- watch_get_today http200 type=object raw={...}
+[sync] loadWeek 开始 wd=5 auto=true
+[sync] 缓存命中 ver=f5f7f5... 天数=3
+[api] -> watch_get_week
+[api] <- watch_get_week http200 type=object raw={...}
+[sync] 联网校验 版本未变, 沿用缓存 ver=f5f7f5...
 [today] applyPlan 完成 1/8
 [sync] flushPending 开始 / 待补传 N 条
 ```

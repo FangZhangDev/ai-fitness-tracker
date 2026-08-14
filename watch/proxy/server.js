@@ -29,7 +29,7 @@
  *      报 400」。这里按配对码合并并发、缓存成功结果 10 分钟，重发拿回同一 token。
  *
  * 安全设计:
- *   - 只转发写死的 Supabase 域名，且路径必须匹配白名单里的三个 RPC 函数，
+ *   - 只转发写死的 Supabase 域名，且路径必须匹配白名单里的 RPC 函数，
  *     不会沦为任何人都能用的开放代理
  *   - 不持有任何密钥: apikey 由手表带上来原样透传，本服务不存储、不打印
  *   - 幂等缓存里短暂持有明文 token(<=10 分钟)，只在内存，重启即清空
@@ -53,10 +53,11 @@ const PORT = parseInt(process.env.PORT || '8080', 10)
 const SUPABASE_URL =
   process.env.SUPABASE_URL || 'https://brizffqttkhuktpqlcie.supabase.co'
 
-/** 只允许这三个 RPC —— 与手表端用到的完全一致 */
+/** 只允许这几个 RPC —— 与手表端用到的完全一致 */
 const ALLOWED_RPC = [
   'watch_redeem_pairing_code',
   'watch_get_today',
+  'watch_get_week',
   'watch_submit_logs',
 ]
 

@@ -98,8 +98,17 @@ REST 探测返回 401。去控制台取：
 
 ### 2. 建表（必须）
 
-Supabase 控制台 → SQL Editor → 粘贴执行 `supabase/migrations/0001_init_schema.sql`
-（建表 + RLS + 触发器 + 视图，一次完成）。
+Supabase 控制台 → SQL Editor → 按编号依次粘贴执行 `supabase/migrations/` 下的
+所有 `.sql`（都写成可重复执行，重跑无副作用）：
+
+| 迁移 | 作用 |
+|---|---|
+| `0001_init_schema.sql` | 建表 + RLS + 触发器 + 视图 |
+| `0002_workout_plans.sql` | 训练计划模板 |
+| `0003_meal_all_day.sql` | 全天饮食 |
+| `0004_watch_pairing.sql` | 手表配对与数据接口 |
+| `0005_watch_max_weight.sql` | 手表预填改用历史最大重量 |
+| `0006_watch_week_cache.sql` | 手表整周计划 + 版本号增量校验（手表 v1.2.0 起需要）|
 
 ### 3. Auth 设置（必须）
 

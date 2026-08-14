@@ -64,8 +64,11 @@ export function storageDiag() {
 
 const KEY = {
   TOKEN: 'device_token',
-  CACHE: 'today_cache',
+  WEEK: 'week_cache',
   PENDING: 'pending_logs',
+  // v1.1.4 及以前的单日缓存。已废弃, 启动时清掉 ——
+  // 手表上的存储不该留没人读的旧键, 越攒越乱
+  LEGACY_TODAY: 'today_cache',
 }
 
 // storage 的 value 类型在不同固件上表现不一致, 统一按 JSON 字符串存取, 保证确定性
@@ -148,18 +151,34 @@ export function clearToken() {
   return remove(KEY.TOKEN)
 }
 
-// ---------------------------------------------------------------- 计划缓存
+// ---------------------------------------------------------------- 整周缓存
 
-export function getCache() {
-  return read(KEY.CACHE)
+/**
+ * 整周计划缓存, 形如:
+ *   {
+ *     version: 'md5',                       // 后端算的, 用来判断计划变没变
+ *     days: { '1': { title, exercises } },  // 没安排的周几直接不出现
+ *     today: { date: '2026-08-14', done: { '卧推': {...} } },
+ *     savedAt: 1723600000000
+ *   }
+ *
+ * 固定一个键、整份覆盖 —— 不按天分键, 否则一年下来会攒出一堆没人读的旧键。
+ */
+export function getWeek() {
+  return read(KEY.WEEK)
 }
 
-export function setCache(weekday, payload) {
-  return write(KEY.CACHE, {
-    weekday: weekday === undefined || weekday === null ? 0 : weekday,
-    payload: payload,
-    cachedAt: Date.now(),
-  })
+export function setWeek(cache) {
+  return write(KEY.WEEK, cache)
+}
+
+export function clearWeek() {
+  return remove(KEY.WEEK)
+}
+
+/** 清掉早期版本留下的单日缓存键; 没有也不报错 */
+export function dropLegacyCache() {
+  return remove(KEY.LEGACY_TODAY)
 }
 
 // ---------------------------------------------------------------- 离线队列

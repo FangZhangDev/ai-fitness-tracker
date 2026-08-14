@@ -7,7 +7,7 @@
         2. 若它显示了而下面各屏都空白, 即可断定是条件渲染失效, 而非白屏崩溃
       功能稳定后可删。
     -->
-    <text class="ver">v1.1.4 {{ bootInfo }}</text>
+    <text class="ver">v1.2.0 {{ bootInfo }}</text>
 
     <!-- ============ 加载中 ============ -->
     <div if="{{ isLoading }}" class="center">
@@ -178,6 +178,11 @@
       hasPairHint: false,
     },
 
+    onInit() {
+      // 清掉 v1.1.4 及以前的单日缓存键 —— 已经没人读了, 留着只会占地方
+      store.dropLegacyCache()
+    },
+
     // 标题栏由 manifest.json 的 display.titleBar 控制, 不在代码里调
     onShow() {
       // 训练时手一直在忙, 屏幕自动熄灭很打断节奏 —— 前台期间保持常亮
@@ -239,19 +244,24 @@
       if (self.stage !== 'pickday') self.setStage('ready')
       self.setBanner('')
 
+      const onData = function (payload, fromCache, ageDays) {
+        self.applyPlan(payload)
+        // 缓存照常能用, 但得让人知道它是几天前同步的
+        if (fromCache) {
+          self.setBanner(ageDays > 0 ? '离线 · ' + ageDays + ' 天前的计划' : '离线数据')
+        }
+      }
+
       sync
-        .loadToday(token, self.weekday, function (payload, fromCache) {
-          self.applyPlan(payload)
-          if (fromCache) self.setBanner('离线数据')
-        })
+        .loadWeek(token, self.weekday, onData)
         .then(function () {
           self.setBanner('')
           // 顺手把攒下的离线记录补传
           return sync.flushPending(token).then(function (n) {
             if (n > 0) {
               self.setBanner('已补传 ' + n + ' 条')
-              // 补传后服务端状态变了, 重新拉一次
-              return api.getToday(token, self.weekday).then(function (p) {
+              // 补传后今日完成情况变了, 再校验一次(版本没变时只有 178 字节)
+              return sync.loadWeek(token, self.weekday, function (p) {
                 self.applyPlan(p)
               })
             }

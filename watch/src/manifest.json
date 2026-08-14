@@ -2,8 +2,8 @@
   "package": "com.fzg.fitness",
   "name": "健身计划",
   "icon": "/assets/images/icon.png",
-  "versionName": "1.1.4",
-  "versionCode": 15,
+  "versionName": "1.2.0",
+  "versionCode": 16,
   "deviceTypeList": [
     "watch",
     "watch-square",

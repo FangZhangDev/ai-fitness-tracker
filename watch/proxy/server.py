@@ -36,7 +36,7 @@
      响应一律带 Content-Length，可以安全开 1.1，省掉手表侧每次重连的开销。
 
 安全设计:
-    - 只转发写死的 Supabase 域名，且路径必须命中三个 RPC 白名单，
+    - 只转发写死的 Supabase 域名，且路径必须命中 RPC 白名单，
       不会沦为开放代理
     - 不持有任何密钥：apikey 由手表带上来原样透传，本服务不存储、不打印
     - 幂等缓存里确实短暂持有明文 token（<=10 分钟），与它转发的内容同级，
@@ -64,10 +64,11 @@ SUPABASE_URL = os.environ.get(
 ).rstrip("/")
 UPSTREAM_HOST = SUPABASE_URL.split("://", 1)[-1]
 
-# 只允许这三个 RPC —— 与手表端用到的完全一致
+# 只允许这几个 RPC —— 与手表端用到的完全一致
 ALLOWED_RPC = {
     "watch_redeem_pairing_code",
     "watch_get_today",
+    "watch_get_week",
     "watch_submit_logs",
 }
 

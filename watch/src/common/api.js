@@ -252,6 +252,37 @@ export function getToday(token, weekday) {
   })
 }
 
+/**
+ * 取整周计划 (0006 迁移新增)
+ *
+ * 手表大部分时间连不上转发服务, 所以一次把七天全拿下来整份缓存。
+ * 把上次的 version 带上去, 后端比对:
+ *   没变 -> 只回 { unchanged: true, today_done } , 实测 178 字节
+ *   变了 -> 回整周, 手表整份覆盖 (实测 776 字节 / 3 个训练日)
+ *
+ * @param {string} token
+ * @param {string|null} version 上次拿到的版本号, 没有就传 null
+ */
+export function getWeek(token, version) {
+  const bad = requireToken(token)
+  if (bad) return bad
+  return rpc('watch_get_week', {
+    p_token: token,
+    p_version: version === undefined || version === '' ? null : version,
+  })
+}
+
+/**
+ * 后端还没执行 0006 迁移时, PostgREST 找不到函数会回 404 (PGRST202)。
+ * 据此回落到旧的单日接口, 免得「刷了新应用但还没跑 SQL」直接变砖。
+ */
+export function isMissingWeekRpc(err) {
+  if (!err) return false
+  if (err.code === 404) return true
+  const m = String(err.message || '')
+  return m.indexOf('net404') >= 0 || m.indexOf('Could not find the function') >= 0
+}
+
 /** 批量提交训练记录 (离线补传时一次发多条) */
 export function submitLogs(token, logs) {
   const bad = requireToken(token)
