@@ -7,7 +7,7 @@
         2. 若它显示了而下面各屏都空白, 即可断定是条件渲染失效, 而非白屏崩溃
       功能稳定后可删。
     -->
-    <text class="ver">v1.0.2 {{ bootInfo }}</text>
+    <text class="ver">v1.0.4 {{ bootInfo }}</text>
 
     <!-- ============ 加载中 ============ -->
     <div if="{{ isLoading }}" class="center">
@@ -141,7 +141,9 @@
   }
 
   export default {
-    private: {
+    // 蓝河只认 data —— private/protected/public 在真机上不生效,
+    // 声明在里面的字段全部会是 undefined(三个开源蓝河应用均只用 data)
+    data: {
       stage: 'loading', // loading | unpaired | pickday | ready
       token: '',
       title: '',

@@ -30,7 +30,9 @@
   import * as device from '../../common/device.js'
 
   export default {
-    private: {
+    // 蓝河只认 data —— private/protected/public 在真机上不生效,
+    // 声明在里面的字段全部会是 undefined(三个开源蓝河应用均只用 data)
+    data: {
       digits: [0, 0, 0, 0, 0, 0],
       idx: 0,
       cells: [],

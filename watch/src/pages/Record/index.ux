@@ -61,17 +61,17 @@
   }
 
   export default {
-    // protected: 允许应用内页面传参, 但不接受外部 deeplink 覆盖
-    protected: {
+    // 蓝河只认 data —— private/protected/public 在真机上不生效。
+    // 路由参数同样通过 data 接收: 文档说明「使用 data 声明的属性会被外部数据覆盖」,
+    // 因此 exercise/weight 等仍能由 router.push 的 params 填入。
+    data: {
+      // ↓ 由上一页 router.push 传入
       exercise: '',
       workoutDay: '',
       weight: '0',
       sets: '3',
       reps: '8',
       rir: '2',
-    },
-
-    private: {
       fieldIdx: 0, // 当前正在调的字段
       vals: { weight: 0, sets: 3, reps: 8, rir: 2 },
       displayValue: '0',

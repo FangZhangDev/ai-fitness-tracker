@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 蓝河应用签名私钥 —— 泄露即可被他人冒名打包, 绝不入库
+watch/sign/
+*.pem
