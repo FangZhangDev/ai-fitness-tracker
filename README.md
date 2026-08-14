@@ -40,18 +40,10 @@
 
 ### 手表端（vivo BlueOS 3 全系手表）
 
-```
-        今日计划                    记录
-   ┌──────────────┐         ┌──────────────┐
-   │  推日    2/5  │         │    卧推       │
-   │ ▔▔▔▔▔▔▔━━━━━ │         │      ▲        │
-   │ ✓ 卧推        │         │   62.5 kg     │ ← 转表冠
-   │   60kg 4×8    │         │      ▼        │
-   │ ✓ 上斜哑铃     │         │ 重量 组 次 RIR │ ← 点击切换
-   │   22kg 3×10   │         │ 62.5  4  8  2 │
-   │ ○ 器械飞鸟     │         │   [ 完成 ]     │
-   └──────────────┘         └──────────────┘
-```
+<div align="center">
+  <img src="docs/screenshots/watch-record.png" alt="手表记录页真机截图" width="320">
+  <p><em>记录页（Watch 3 真机）：转表冠调当前字段，点下面四个标签切换重量 / 组数 / 次数 / RIR，点「完成」入库</em></p>
+</div>
 
 - 手表上**不做账号登录**——网页生成 6 位配对码，手表输一次换长期 token
 - **整周计划离线缓存**，靠版本号增量校验；没网照常看，还能切到别的训练日
@@ -153,6 +145,7 @@ python3 watch/proxy/server.py                         # 起转发服务 (Node �
 | [`watch/README.md`](watch/README.md) | 手表应用：架构、打包、交互、**蓝河真机开发的十来个坑** |
 | [`watch/proxy/README.md`](watch/proxy/README.md) | 转发服务：为什么需要它、幂等与连接复用设计、部署方式 |
 | [`supabase/migrations/`](supabase/migrations/) | 数据库 schema，每个文件顶部都写清了「为什么这么改」 |
+| [`docs/screenshots/`](docs/screenshots/) | 真机截图（欢迎补充其它机型 / 其它页面）|
 
 ## 目录结构
 
@@ -177,6 +170,7 @@ ai-fitness-tracker/
 │   ├── actions/             # Server Actions
 │   ├── constants/           # 共享常量
 │   └── utils/               # 日期 / PR / 导出
+├── docs/screenshots/        # 真机截图
 ├── supabase/migrations/     # SQL 迁移
 ├── watch/                   # ⌚ 蓝河(BlueOS)手表应用
 │   ├── src/                 # 页面 (.ux) 与公共模块
