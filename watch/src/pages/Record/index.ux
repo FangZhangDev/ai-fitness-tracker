@@ -61,6 +61,13 @@
     return String(Math.round(n * 100) / 100)
   }
 
+  // 表冠节流: 攒够这么多步进才动一次, 数值越大越迟钝(同 Pair 页)。
+  // Record 调的是连续值(重量 0.5kg 一格), 不能像 Pair 那样攒 8 才动 1 格
+  // (那样从 0 到 60kg 要转到手酸); 但不能为 1 -- 轻转一下触发多个事件,
+  // 数字会"嗖"地窜过去(用户痛点: 转很小, 数字增减太快)。3 为折中, 真机实测后微调。
+  const ROTATE_STEP = 3
+  let rotateAcc = 0
+
   export default {
     // 蓝河只认 data —— private/protected/public 在真机上不生效。
     // 路由参数同样通过 data 接收: 文档说明「使用 data 声明的属性会被外部数据覆盖」,
@@ -135,12 +142,17 @@
      *   velocity 高时加大步进 —— 从 20kg 转到 80kg 不至于转到手酸
      */
     onRotation(e) {
-      if (!e) return
-      if (e.state === 3) return // 3 = 旋转结束, 不重复计数
+      if (!e || e.state === 3) return // 3 = 旋转结束, 不重复计数
 
       let d = e.delta
       if (!d) d = e.direction ? -1 : 1
-      const dir = d > 0 ? 1 : -1
+
+      // 反向时立即清零, 免得残留的反向累积让第一下没反应
+      if ((d > 0) !== (rotateAcc > 0)) rotateAcc = 0
+      rotateAcc += d
+      if (Math.abs(rotateAcc) < ROTATE_STEP) return
+      const dir = rotateAcc > 0 ? 1 : -1
+      rotateAcc = 0
 
       const fast = e.velocity && Math.abs(e.velocity) > 15 ? 4 : 1
       const key = FIELDS[this.fieldIdx].key
