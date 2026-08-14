@@ -2,20 +2,29 @@
   "package": "com.fzg.fitness",
   "name": "健身计划",
   "icon": "/assets/images/icon.png",
-  "versionName": "1.0.1",
-  "versionCode": 2,
-  "minPlatformVersion": 1070,
-  "deviceTypeList": ["watch", "watch-round"],
-  "appCategory": ["sports"],
+  "versionName": "1.0.3",
+  "versionCode": 4,
+  "deviceTypeList": [
+    "watch",
+    "watch-square",
+    "watch-round"
+  ],
+  "appCategory": [
+    "sports"
+  ],
   "features": [
-    { "name": "blueos.app.appmanager.router" },
-    { "name": "blueos.app.router" },
-    { "name": "blueos.notification.prompt" },
-    { "name": "blueos.app.prompt" },
-    { "name": "blueos.communication.network.fetch" },
-    { "name": "blueos.network.fetch" },
-    { "name": "blueos.storage.storage" },
-    { "name": "blueos.hardware.vibrator" }
+    {
+      "name": "blueos.app.appmanager.router"
+    },
+    {
+      "name": "blueos.storage.storage"
+    },
+    {
+      "name": "blueos.network.fetch"
+    },
+    {
+      "name": "blueos.hardware.vibrator.vibrator"
+    }
   ],
   "permissions": [],
   "config": {

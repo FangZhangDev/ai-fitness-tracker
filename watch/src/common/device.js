@@ -54,13 +54,15 @@ if (!_prompt) {
   } catch (e) {}
 }
 
+// 注意是双 vibrator: @blueos.hardware.vibrator.vibrator
+// (开源蓝河应用 blueos-calculator 用的就是这个, 单 vibrator 是我此前写错的)
 let _vibrator = null
 try {
-  _vibrator = require('@blueos.hardware.vibrator')
+  _vibrator = require('@blueos.hardware.vibrator.vibrator')
 } catch (e) {}
 if (!_vibrator) {
   try {
-    _vibrator = require('@system.vibrator')
+    _vibrator = require('@blueos.hardware.vibrator')
   } catch (e) {}
 }
 

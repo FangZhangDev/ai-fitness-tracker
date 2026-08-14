@@ -9,10 +9,10 @@
  * 重复提交不会产生脏数据, 队列里同一动作只保留最后一次即可。
  */
 
-// 与 api.js 同样的处理: 原生模块方法不可枚举, 只能按方法名 typeof 探测;
-// feature 名也可能对不上, 所以多写候选静态 import, 运行时挑能用的。
-import storageA from '@blueos.storage.storage'
-import storageB from '@system.storage'
+// 理由同 api.js: 绝不用静态 import 引 feature
+let storageA = null, storageB = null
+try { storageA = require('@blueos.storage.storage') } catch (e) {}
+try { storageB = require('@system.storage') } catch (e) {}
 
 function resolveStorage(m) {
   if (!m) return null
@@ -71,6 +71,11 @@ const KEY = {
 // storage 的 value 类型在不同固件上表现不一致, 统一按 JSON 字符串存取, 保证确定性
 function read(key) {
   return new Promise(function (resolve) {
+    // storage 拿不到时直接当作「没有数据」, 不要让 Promise 以异常收场
+    if (!storage) {
+      resolve(null)
+      return
+    }
     storage.get({
       key: key,
       default: '',
@@ -94,6 +99,10 @@ function read(key) {
 
 function write(key, value) {
   return new Promise(function (resolve) {
+    if (!storage) {
+      resolve(false)
+      return
+    }
     storage.set({
       key: key,
       value: JSON.stringify(value),
@@ -109,6 +118,10 @@ function write(key, value) {
 
 function remove(key) {
   return new Promise(function (resolve) {
+    if (!storage) {
+      resolve(false)
+      return
+    }
     storage.delete({
       key: key,
       success: function () {

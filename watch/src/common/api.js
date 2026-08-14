@@ -12,20 +12,17 @@
 import { CONFIG } from '../config.js'
 
 // ---------------------------------------------------------------------------
-// 蓝河的原生模块方法是「不可枚举」的: Object.keys(mod) 一律返回空数组,
-// 但方法确实存在且可调用 (router 就是最好的例子 —— keys 为空却能正常跳转)。
-// 所以判断一个模块能不能用, 唯一可靠的方式是直接 typeof mod.xxx === 'function',
-// 绝不能看 keys。
-//
-// feature 名官方文档给了两个, 实测 @blueos.communication.network.fetch
-// import 进来 .fetch 不是函数, 即该 feature 未注入; API 参考页写的
-// @blueos.network.fetch 才是正解。三个候选全部静态 import ——
-// require 在本工程实测拿不到东西, 而 import 一个不存在的 feature 只会得到
-// 空对象, 不会崩, 因此可以安全地都写上, 运行时挑能用的那个。
+// 蓝河原生模块的方法「不可枚举」: Object.keys(mod) 恒为空数组, 但方法确实存在。
+// 判断可用性唯一可靠的方式是 typeof mod.xxx === 'function', 绝不能看 keys。
 // ---------------------------------------------------------------------------
-import fetchA from '@blueos.network.fetch'
-import fetchB from '@blueos.communication.network.fetch'
-import fetchC from '@system.fetch'
+// 一律用 try+字面量 require, 不用静态 import ——
+// 静态 import 一个真机上不存在的 feature 会让整个模块加载失败,
+// 进而拖垮引用它的页面(表现为页面 JS 完全不执行, 只剩静态元素渲染)。
+// require 失败只是拿不到该模块, 不影响其余代码。
+let fetchA = null, fetchB = null, fetchC = null
+try { fetchA = require('@blueos.network.fetch') } catch (e) {}
+try { fetchB = require('@system.fetch') } catch (e) {}
+try { fetchC = require('@blueos.communication.network.fetch') } catch (e) {}
 
 /** 从一个模块里解出可调用的 fetch 函数; 解不出返回 null */
 function resolveFetchFn(m) {
@@ -55,8 +52,8 @@ function probe(m) {
 
 const CANDIDATES = [
   { name: '@blueos.network.fetch', mod: fetchA },
-  { name: '@blueos.communication.network.fetch', mod: fetchB },
-  { name: '@system.fetch', mod: fetchC },
+  { name: '@system.fetch', mod: fetchB },
+  { name: '@blueos.communication.network.fetch', mod: fetchC },
 ]
 
 let _fetchFn = null
