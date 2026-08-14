@@ -94,7 +94,7 @@
             device.vibrate()
             self.busy = false
             // replace: 免得用户按返回又回到配对页
-            device.replace('/Today')
+            device.replace('/')
           })
         })
         .catch(function (e) {

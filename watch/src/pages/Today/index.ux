@@ -197,7 +197,7 @@
     openRecord(idx) {
       const e = this.exercises[idx]
       if (!e) return
-      device.push('/Record', {
+      device.push('/record', {
         exercise: e.exercise,
         workoutDay: this.title,
         // 预填: 已记录过就用实际值, 否则用上次的值, 再否则用计划目标
@@ -234,7 +234,7 @@
     },
 
     goPair() {
-      device.push('/Pair')
+      device.push('/pair')
     },
   }
 </script>

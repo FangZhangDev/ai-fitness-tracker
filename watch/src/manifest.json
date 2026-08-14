@@ -24,17 +24,19 @@
     "fullScreen": true
   },
   "router": {
-    "entry": "Today",
+    "entry": "pages/Today",
     "pages": {
-      "Today": {
+      "pages/Today": {
         "component": "index",
         "path": "/"
       },
-      "Record": {
-        "component": "index"
+      "pages/Record": {
+        "component": "index",
+        "path": "/record"
       },
-      "Pair": {
-        "component": "index"
+      "pages/Pair": {
+        "component": "index",
+        "path": "/pair"
       }
     }
   }
