@@ -11,7 +11,9 @@ function str(v: FormDataEntryValue | null): string {
   return (v?.toString() ?? "").trim() || "";
 }
 
-const MEAL_TYPES: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
+// 必须与 lib/types/database.ts 的 MealType 及 0003 迁移的 CHECK 约束保持一致。
+// all_day 是表单默认值, 漏掉它会导致默认提交直接被判「餐次无效」。
+const MEAL_TYPES: MealType[] = ["all_day", "breakfast", "lunch", "dinner", "snack"];
 
 /**
  * 新增饮食记录: 用户只填自然语言描述, 自动调 AI 估算营养并回填。
