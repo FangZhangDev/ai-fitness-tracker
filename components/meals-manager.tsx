@@ -148,33 +148,15 @@ export default function MealsManager({
                   </div>
                 )}
 
-                {/* 管理面板: 改名、改内容、删除 */}
+                {/* 管理面板: 改名、改内容、删除。
+                    这里绝不能用 <form> —— 整块都在主表单(创建饮食)内部, HTML 不允许
+                    表单嵌套, 浏览器会把内层 form 拆掉: 按钮变成主表单的提交按钮,
+                    而 name="description" 还会排在主表单的 textarea 前面被 get() 优先取到。
+                    一律用 type="button" + 手工拼 FormData 调 action。 */}
                 {managing && templates.length > 0 && (
                   <div className="mb-2 space-y-1.5 rounded-md border border-neutral-200 p-2 dark:border-neutral-800">
                     {templates.map((t) => (
-                      <div key={t.id} className="flex items-center gap-1.5">
-                        <form
-                          action={async (fd) => { await updateMealTemplate(fd); }}
-                          className="flex min-w-0 flex-1 items-center gap-1.5"
-                        >
-                          <input type="hidden" name="id" value={t.id} />
-                          <input
-                            name="name"
-                            defaultValue={t.name}
-                            className="input w-28 shrink-0 px-2 py-1 text-xs"
-                          />
-                          <input
-                            name="description"
-                            defaultValue={t.description}
-                            className="input min-w-0 flex-1 px-2 py-1 text-xs"
-                          />
-                          <button className="btn btn-ghost shrink-0 px-2 py-1 text-xs">保存</button>
-                        </form>
-                        <form action={async (fd) => { await deleteMealTemplate(fd); }}>
-                          <input type="hidden" name="id" value={t.id} />
-                          <button className="btn btn-ghost px-2 py-1 text-xs text-red-600">删除</button>
-                        </form>
-                      </div>
+                      <TemplateRow key={t.id} tpl={t} />
                     ))}
                     <p className="text-xs text-neutral-400">
                       用得多的会自动排前面。营养值不存进模板——每次提交都按当天实际描述重新估算。
@@ -369,5 +351,87 @@ function MealItems({ items }: { items: NutritionItem[] }) {
         </p>
       </div>
     </details>
+  );
+}
+
+/** 管理面板里的一行: 改名 / 改内容 / 删除。不用 <form>, 理由见调用处注释 */
+function TemplateRow({ tpl }: { tpl: MealTemplate }) {
+  const [name, setName] = useState(tpl.name);
+  const [desc, setDesc] = useState(tpl.description);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  const dirty = name !== tpl.name || desc !== tpl.description;
+
+  async function save() {
+    setBusy(true);
+    setMsg(null);
+    const fd = new FormData();
+    fd.set("id", tpl.id);
+    fd.set("name", name);
+    fd.set("description", desc);
+    const res = await updateMealTemplate(fd);
+    setBusy(false);
+    setMsg(res?.error ?? "已保存");
+  }
+
+  async function remove() {
+    setBusy(true);
+    const fd = new FormData();
+    fd.set("id", tpl.id);
+    const res = await deleteMealTemplate(fd);
+    setBusy(false);
+    setConfirming(false);
+    if (res?.error) setMsg(res.error);
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <input
+        value={name}
+        onChange={(e) => { setName(e.target.value); setMsg(null); }}
+        placeholder="名字"
+        className="input w-28 shrink-0 px-2 py-1 text-xs"
+      />
+      <input
+        value={desc}
+        onChange={(e) => { setDesc(e.target.value); setMsg(null); }}
+        placeholder="描述"
+        className="input min-w-0 flex-1 px-2 py-1 text-xs"
+      />
+      <button
+        type="button"
+        onClick={save}
+        disabled={busy || !dirty}
+        className="btn btn-ghost shrink-0 px-2 py-1 text-xs disabled:opacity-40"
+      >
+        {busy ? "…" : "保存"}
+      </button>
+      {confirming ? (
+        <>
+          <span className="text-xs text-red-600">删掉「{tpl.name}」？</span>
+          <button type="button" onClick={remove} disabled={busy} className="btn btn-danger px-2 py-1 text-xs">
+            确定
+          </button>
+          <button type="button" onClick={() => setConfirming(false)} className="btn btn-ghost px-2 py-1 text-xs">
+            取消
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="btn btn-ghost shrink-0 px-2 py-1 text-xs text-red-600"
+        >
+          删除
+        </button>
+      )}
+      {msg && (
+        <span className={"text-xs " + (msg === "已保存" ? "text-green-600" : "text-red-600")}>
+          {msg}
+        </span>
+      )}
+    </div>
   );
 }
