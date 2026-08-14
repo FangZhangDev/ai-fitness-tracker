@@ -11,7 +11,18 @@ import {
 import { todayISO, fmtDateLong } from "@/lib/utils/date";
 import { r1 } from "@/lib/utils/pr";
 import type { MealLog, MealTemplate } from "@/lib/types/database";
+import { SLOT_LABEL, type MealSlot, type NutritionItem } from "@/lib/ai/nutrition";
 import { Card, Field, EmptyState, Badge, MEAL_TYPE_LABEL } from "@/components/ui";
+
+/**
+ * 从 ai_raw 里取逐项明细。
+ * 老记录(改成逐项之前存的)没有 items, 返回空数组, 界面就不显示明细。
+ */
+function itemsOf(raw: unknown): NutritionItem[] {
+  if (!raw || typeof raw !== "object") return [];
+  const list = (raw as { items?: unknown }).items;
+  return Array.isArray(list) ? (list as NutritionItem[]) : [];
+}
 
 /** 取最近可套用的「全天」饮食: 排除今天, 每天只留一条, 最多 7 条 */
 function pickRecent(list: MealLog[]): MealLog[] {
@@ -275,10 +286,88 @@ export default function MealsManager({
                   <span>脂肪 <b className="text-neutral-700 dark:text-neutral-200">{r1(m.fat_g)}</b> g</span>
                 </div>
               )}
+
+              {/* 逐项明细: 估得离谱时能当场看出是哪一项、按什么份量算的 */}
+              <MealItems items={itemsOf(m.ai_raw)} />
             </div>
           ))}
         </Card>
       )}
     </div>
+  );
+}
+
+/**
+ * AI 的逐项明细, 按餐次分组并给出每餐小计。
+ * 老记录(没有 items)整块不渲染; 更老的记录有 items 但没有 slot, 会全落在「其它」。
+ */
+const SLOT_ORDER: MealSlot[] = ["breakfast", "lunch", "snack", "dinner", "other"];
+
+function MealItems({ items }: { items: NutritionItem[] }) {
+  if (!items.length) return null;
+
+  const groups = SLOT_ORDER.map((slot) => ({
+    slot,
+    rows: items.filter((it) => (it.slot ?? "other") === slot),
+  })).filter((g) => g.rows.length > 0);
+
+  const subtotal = (rows: NutritionItem[]) =>
+    rows.reduce(
+      (a, it) => ({
+        c: a.c + (it.calories || 0),
+        p: a.p + (it.protein_g || 0),
+      }),
+      { c: 0, p: 0 },
+    );
+
+  return (
+    <details className="mt-1.5">
+      <summary className="cursor-pointer text-xs text-neutral-400 hover:text-indigo-600">
+        明细（{groups.length > 1 ? `${groups.length} 餐 · ` : ""}
+        {items.length} 项）
+      </summary>
+      <div className="mt-1 overflow-x-auto">
+        <table className="w-full min-w-[28rem] text-xs tabular-nums">
+          <thead className="text-neutral-400">
+            <tr>
+              <th className="py-0.5 text-left font-normal">食物</th>
+              <th className="py-0.5 text-left font-normal">AI 假设份量</th>
+              <th className="py-0.5 text-right font-normal">kcal</th>
+              <th className="py-0.5 text-right font-normal">蛋白</th>
+              <th className="py-0.5 text-right font-normal">碳水</th>
+              <th className="py-0.5 text-right font-normal">脂肪</th>
+            </tr>
+          </thead>
+          {groups.map((g) => {
+            const st = subtotal(g.rows);
+            return (
+              <tbody key={g.slot} className="text-neutral-600 dark:text-neutral-300">
+                <tr className="border-t border-neutral-200 dark:border-neutral-700">
+                  <td colSpan={2} className="py-0.5 font-medium text-neutral-500">
+                    {SLOT_LABEL[g.slot]}
+                  </td>
+                  <td className="py-0.5 text-right text-neutral-400">{st.c}</td>
+                  <td className="py-0.5 text-right text-neutral-400">{r1(st.p)}</td>
+                  <td colSpan={2} />
+                </tr>
+                {g.rows.map((it, i) => (
+                  <tr key={i}>
+                    <td className="py-0.5 pr-2 pl-3">{it.name}</td>
+                    <td className="py-0.5 pr-2 text-neutral-400">{it.grams}</td>
+                    <td className="py-0.5 text-right">{it.calories}</td>
+                    <td className="py-0.5 text-right">{r1(it.protein_g)}</td>
+                    <td className="py-0.5 text-right">{r1(it.carbs_g)}</td>
+                    <td className="py-0.5 text-right">{r1(it.fat_g)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            );
+          })}
+        </table>
+        <p className="mt-1 text-xs text-neutral-400">
+          份量是 AI 假设的。差得多就把描述写具体些（如「隆江猪脚饭 大份」），再点「重分析」。
+        </p>
+      </div>
+    </details>
   );
 }

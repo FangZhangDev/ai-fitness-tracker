@@ -63,7 +63,11 @@ const DATA_DICTIONARY = `## 数据字典
 | --- | --- |
 | date / meal_type | 日期 / 餐次(breakfast午lunch晚dinner加餐snack) |
 | description | 用自然语言写的进食内容 |
-| calories / protein_g / carbs_g / fat_g | 由 AI 估算的热量与三大营养素 |
+| calories / protein_g / carbs_g / fat_g | 由 AI 估算的热量与三大营养素（= 逐项明细之和）|
+| ai_raw | 逐项明细：每样食物的餐次(slot)、假设份量、热量与三大营养素。**只在 JSON 导出里**，md/csv 不含 |
+
+> description 是原始自由文本，补剂（肌酸、维生素等）也原样在里面；
+> 它们在营养数字上按 0 kcal 计，但在 ai_raw 的明细里会单独成一项，可据此统计补剂天数。
 
 ### workout_logs 训练记录
 | 字段 | 含义 |
@@ -189,7 +193,11 @@ export function buildMarkdownBundle(d: BundleData, exportedAt: string): string {
 /** 一个表 → Markdown 表格 (空表也留个标题, 让 AI 知道这块确实没数据) */
 function section(title: string, rows: Row[]): string {
   if (!rows.length) return `## ${title}\n\n（暂无数据）\n`;
-  const headers = Object.keys(rows[0]).filter((h) => h !== "id" && h !== "user_id");
+  // ai_raw 是嵌套 JSON(逐项明细), 塞进 Markdown 表格既没法看又会被 String()
+  // 变成 [object Object]。它只保留在 JSON 导出里。
+  const headers = Object.keys(rows[0]).filter(
+    (h) => h !== "id" && h !== "user_id" && h !== "ai_raw",
+  );
   const lines = [
     `## ${title}（共 ${rows.length} 条）`,
     "",
@@ -212,6 +220,15 @@ function kvTable(obj: Row): string {
 }
 
 /** 单元格转义: Markdown 表格里 | 和换行会破坏结构 */
+/** 去掉 ai_raw 那一列 (嵌套 JSON, 只适合放进 JSON 导出) */
+function withoutAiRaw(row: Row): Row {
+  const out: Row = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (k !== "ai_raw") out[k] = v;
+  }
+  return out;
+}
+
 function cell(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
   return String(v).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
@@ -253,7 +270,8 @@ export async function buildZipBundle(d: BundleData, exportedAt: string): Promise
 
   const data = zip.folder("data")!;
   data.file("daily_metrics.csv", toCSV(d.dailyMetrics));
-  data.file("meal_logs.csv", toCSV(d.mealLogs));
+  // 同上: ai_raw 是嵌套 JSON, 进 CSV 只会变成一列 [object Object]
+  data.file("meal_logs.csv", toCSV(d.mealLogs.map(withoutAiRaw)));
   data.file("workout_logs.csv", toCSV(d.workoutLogs));
   data.file("daily_nutrition.csv", toCSV(d.dailyNutrition));
   data.file("exercise_pr.csv", toCSV(d.exercisePR));
