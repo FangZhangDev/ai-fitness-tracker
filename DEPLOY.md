@@ -20,6 +20,7 @@
 | `0004_watch_pairing.sql` | 手表配对与数据接口 |
 | `0005_watch_max_weight.sql` | 手表预填改用历史最大重量 |
 | `0006_watch_week_cache.sql` | 手表整周计划 + 版本号增量校验（手表 v1.2.0 起需要）|
+| `0007_meal_templates_and_log_source.sql` | 常吃套餐 + 训练记录来源标记（手表端无需改动）|
 
 只用网页端的话，`0004`~`0006` 可以不执行。
 

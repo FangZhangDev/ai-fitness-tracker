@@ -1,10 +1,16 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useActionState, useRef, useState } from "react";
 import { createMeal, reanalyzeMeal, deleteMeal } from "@/lib/actions/meals";
+import {
+  createMealTemplate,
+  updateMealTemplate,
+  deleteMealTemplate,
+  touchMealTemplate,
+} from "@/lib/actions/meal-templates";
 import { todayISO, fmtDateLong } from "@/lib/utils/date";
 import { r1 } from "@/lib/utils/pr";
-import type { MealLog } from "@/lib/types/database";
+import type { MealLog, MealTemplate } from "@/lib/types/database";
 import { Card, Field, EmptyState, Badge, MEAL_TYPE_LABEL } from "@/components/ui";
 
 /** 取最近可套用的「全天」饮食: 排除今天, 每天只留一条, 最多 7 条 */
@@ -22,19 +28,64 @@ function pickRecent(list: MealLog[]): MealLog[] {
   return out;
 }
 
-export default function MealsManager({ list }: { list: MealLog[] }) {
+export default function MealsManager({
+  list,
+  templates = [],
+}: {
+  list: MealLog[];
+  templates?: MealTemplate[];
+}) {
   const [state, formAction, pending] = useActionState(createMeal, undefined);
   const descRef = useRef<HTMLTextAreaElement>(null);
+  const typeRef = useRef<HTMLSelectElement>(null);
+  const [savingTpl, setSavingTpl] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const [tplName, setTplName] = useState("");
+  const [tplErr, setTplErr] = useState<string | null>(null);
+  const [tplBusy, setTplBusy] = useState(false);
   // list 已按日期倒序, 直接顺着取即可
   const recent = pickRecent(list);
 
-  /** 把选中的那天填进输入框, 光标落到末尾便于接着改 */
+  /** 把选中的文本填进输入框, 光标落到末尾便于接着改 */
   function fill(text: string) {
     const el = descRef.current;
     if (!el) return;
     el.value = text;
     el.focus();
     el.setSelectionRange(text.length, text.length);
+  }
+
+  /** 用一个常吃套餐: 填入 + 记一次使用(纯统计, 失败不打扰用户) */
+  function useTemplate(t: MealTemplate) {
+    fill(t.description);
+    void touchMealTemplate(t.id);
+  }
+
+  /**
+   * 把当前输入框里的描述存成模板。
+   * 不用 <form> 是因为描述在主表单的 textarea 里, HTML 不允许表单嵌套,
+   * 直接读 ref 再自己拼 FormData 最省事。
+   */
+  async function saveTemplate() {
+    const desc = descRef.current?.value.trim() ?? "";
+    if (!desc) {
+      setTplErr("上面的输入框还是空的");
+      return;
+    }
+    setTplBusy(true);
+    const fd = new FormData();
+    fd.set("name", tplName);
+    fd.set("description", desc);
+    fd.set("meal_type", typeRef.current?.value ?? "all_day");
+    const res = await createMealTemplate(undefined, fd);
+    setTplBusy(false);
+    if (res?.error) {
+      setTplErr(res.error);
+      return;
+    }
+    setTplErr(null);
+    setTplName("");
+    setSavingTpl(false);
   }
 
   return (
@@ -50,7 +101,7 @@ export default function MealsManager({ list }: { list: MealLog[] }) {
               <input name="date" type="date" defaultValue={todayISO()} className="input" required />
             </Field>
             <Field label="餐次" hint="想单独记某一餐再改这里">
-              <select name="meal_type" defaultValue="all_day" className="input">
+              <select ref={typeRef} name="meal_type" defaultValue="all_day" className="input">
                 {Object.entries(MEAL_TYPE_LABEL).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
@@ -58,7 +109,66 @@ export default function MealsManager({ list }: { list: MealLog[] }) {
             </Field>
             <div className="col-span-2">
               <Field label="吃了什么">
-                {/* 日常饮食变化不大, 直接套用最近某天再微调, 比每次重敲一遍快得多 */}
+                {/* 常吃套餐: 日常饮食其实是几个固定组合轮着来, 比翻最近某天更准 */}
+                {templates.length > 0 && (
+                  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="shrink-0 text-xs text-neutral-400">常吃：</span>
+                    {templates.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => useTemplate(t)}
+                        title={t.description}
+                        className="max-w-[16rem] truncate rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 transition hover:border-indigo-400 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-300 dark:hover:border-indigo-600"
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setManaging((v) => !v)}
+                      className="shrink-0 text-xs text-neutral-400 underline-offset-2 hover:underline"
+                    >
+                      {managing ? "收起" : "管理"}
+                    </button>
+                  </div>
+                )}
+
+                {/* 管理面板: 改名、改内容、删除 */}
+                {managing && templates.length > 0 && (
+                  <div className="mb-2 space-y-1.5 rounded-md border border-neutral-200 p-2 dark:border-neutral-800">
+                    {templates.map((t) => (
+                      <div key={t.id} className="flex items-center gap-1.5">
+                        <form
+                          action={async (fd) => { await updateMealTemplate(fd); }}
+                          className="flex min-w-0 flex-1 items-center gap-1.5"
+                        >
+                          <input type="hidden" name="id" value={t.id} />
+                          <input
+                            name="name"
+                            defaultValue={t.name}
+                            className="input w-28 shrink-0 px-2 py-1 text-xs"
+                          />
+                          <input
+                            name="description"
+                            defaultValue={t.description}
+                            className="input min-w-0 flex-1 px-2 py-1 text-xs"
+                          />
+                          <button className="btn btn-ghost shrink-0 px-2 py-1 text-xs">保存</button>
+                        </form>
+                        <form action={async (fd) => { await deleteMealTemplate(fd); }}>
+                          <input type="hidden" name="id" value={t.id} />
+                          <button className="btn btn-ghost px-2 py-1 text-xs text-red-600">删除</button>
+                        </form>
+                      </div>
+                    ))}
+                    <p className="text-xs text-neutral-400">
+                      用得多的会自动排前面。营养值不存进模板——每次提交都按当天实际描述重新估算。
+                    </p>
+                  </div>
+                )}
+
+                {/* 套用最近某天: 补充手段, 应对「昨天吃的还行, 今天照抄」 */}
                 {recent.length > 0 && (
                   <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                     <span className="shrink-0 text-xs text-neutral-400">套用最近：</span>
@@ -83,6 +193,41 @@ export default function MealsManager({ list }: { list: MealLog[] }) {
                   placeholder="早上三个鸡蛋一个肉包一碗豆浆，中午两碗米饭一份红烧肉一份青菜，下午一个苹果一杯蛋白粉，晚上一碗面条加两个荷包蛋"
                   required
                 />
+                {/* 存成模板: 名字留空就拿描述前 12 字兜底, 不为了起名把人卡住 */}
+                {savingTpl ? (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <input
+                      value={tplName}
+                      onChange={(e) => setTplName(e.target.value)}
+                      placeholder="起个名，留空就取描述前 12 字"
+                      className="input w-56 px-2 py-1 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={saveTemplate}
+                      disabled={tplBusy}
+                      className="btn btn-primary px-2 py-1 text-xs"
+                    >
+                      {tplBusy ? "保存中…" : "保存"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSavingTpl(false); setTplErr(null); }}
+                      className="btn btn-ghost px-2 py-1 text-xs"
+                    >
+                      取消
+                    </button>
+                    {tplErr && <span className="text-xs text-red-600">{tplErr}</span>}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSavingTpl(true)}
+                    className="mt-1.5 text-xs text-neutral-400 underline-offset-2 hover:text-indigo-600 hover:underline"
+                  >
+                    ★ 把上面这段存为常吃套餐
+                  </button>
+                )}
               </Field>
             </div>
           </div>

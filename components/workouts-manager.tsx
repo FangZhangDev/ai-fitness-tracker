@@ -60,7 +60,13 @@ export default function WorkoutsManager({ list }: { list: WorkoutLog[] }) {
               <div key={w.id} className="flex flex-wrap items-center gap-x-5 gap-y-1 p-3 text-sm">
                 <span className="w-24 font-medium tabular-nums">{fmtDateLong(w.date)}</span>
                 {w.workout_day && <span className="text-neutral-400">{w.workout_day}</span>}
-                <span className="font-medium">{w.exercise}</span>
+                <span className="font-medium">
+                  {w.exercise}
+                  {/* 手表上转表冠难免记错一位, 标出来便于集中复核 */}
+                  {w.source === "watch" && (
+                    <span title="这条是在手表上记的" className="ml-1 text-neutral-400">⌚</span>
+                  )}
+                </span>
                 <span className="tabular-nums text-neutral-500">{r2(w.weight_kg)}kg × {w.sets}×{w.reps}</span>
                 {w.rir !== null && <span className="text-neutral-400">RIR {w.rir}</span>}
                 <span className="tabular-nums text-neutral-400">1RM≈{r2(epley1rm(w.weight_kg, w.reps))}</span>

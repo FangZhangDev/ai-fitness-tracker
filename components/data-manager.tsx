@@ -99,6 +99,15 @@ function DayCard({ day }: { day: DayGroup }) {
         {day.workouts.map((w) => (
           <Row key={w.id} kind="workout_logs" id={w.id} label="训练">
             <span className="font-medium">{w.exercise}</span>
+            {/* 表上转表冠难免记错一位(62.5 记成 6.25), 标出来才好集中复核 */}
+            {w.source === "watch" && (
+              <span
+                title="这条是在手表上记的"
+                className="ml-1.5 shrink-0 rounded px-1 text-xs text-neutral-400"
+              >
+                ⌚
+              </span>
+            )}
             <span className="ml-2 whitespace-nowrap tabular-nums text-neutral-400">
               {r2(w.weight_kg)}kg × {w.sets ?? "—"}×{w.reps ?? "—"}
               {w.rir !== null && ` · RIR ${w.rir}`}

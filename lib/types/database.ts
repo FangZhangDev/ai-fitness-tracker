@@ -86,6 +86,9 @@ export type MealLogInsert = Omit<
 export type MealLogUpdate = Partial<Omit<MealLog, "id" | "user_id" | "created_at" | "updated_at">>;
 
 // ---- workout_logs ----
+/** 记录来源: 网页手动录入 / 手表上打勾。由 0007 迁移引入, 历史数据一律为 web */
+export type LogSource = "web" | "watch";
+
 export type WorkoutLog = {
   id: string;
   user_id: string;
@@ -97,12 +100,47 @@ export type WorkoutLog = {
   reps: number | null;
   rir: number | null;
   notes: string | null;
+  source: LogSource;
   created_at: string;
   updated_at: string;
 };
 
-export type WorkoutLogInsert = Omit<WorkoutLog, "id" | "created_at" | "updated_at">;
+// source 由数据库默认值 'web' 兜底, 网页写入不必显式传
+export type WorkoutLogInsert = Omit<WorkoutLog, "id" | "created_at" | "updated_at" | "source"> & {
+  source?: LogSource;
+};
 export type WorkoutLogUpdate = Partial<Omit<WorkoutLog, "id" | "user_id" | "created_at" | "updated_at">>;
+
+// ---- meal_templates (见 supabase/migrations/0007) ----
+/**
+ * 「常吃套餐」: 日常饮食其实是几个固定组合轮着来, 存下来一点即填。
+ * 只存描述文本, 不存营养值 —— 营养由 AI 在提交时按当天实际描述重新估算。
+ */
+export type MealTemplate = {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  meal_type: MealType;
+  sort_order: number;
+  use_count: number;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MealTemplateInsert = Omit<
+  MealTemplate,
+  "id" | "created_at" | "updated_at" | "sort_order" | "use_count" | "last_used_at"
+> & {
+  sort_order?: number;
+  use_count?: number;
+  last_used_at?: string | null;
+};
+
+export type MealTemplateUpdate = Partial<
+  Omit<MealTemplate, "id" | "user_id" | "created_at" | "updated_at">
+>;
 
 // ---- ai_analyses ----
 export type AiAnalysis = {
@@ -303,6 +341,7 @@ export type Database = {
       daily_metrics: { Row: DailyMetric; Insert: DailyMetricInsert; Update: DailyMetricUpdate; Relationships: [] };
       meal_logs: { Row: MealLog; Insert: MealLogInsert; Update: MealLogUpdate; Relationships: [] };
       workout_logs: { Row: WorkoutLog; Insert: WorkoutLogInsert; Update: WorkoutLogUpdate; Relationships: [] };
+      meal_templates: { Row: MealTemplate; Insert: MealTemplateInsert; Update: MealTemplateUpdate; Relationships: [] };
       ai_analyses: { Row: AiAnalysis; Insert: Omit<AiAnalysis, "id" | "created_at">; Update: Partial<AiAnalysis>; Relationships: [] };
       workout_plans: { Row: WorkoutPlan; Insert: Omit<WorkoutPlan, "id" | "created_at" | "updated_at">; Update: Partial<WorkoutPlan>; Relationships: [] };
       plan_days: { Row: PlanDay; Insert: Omit<PlanDay, "id" | "created_at" | "updated_at">; Update: Partial<PlanDay>; Relationships: [] };
@@ -318,6 +357,8 @@ export type Database = {
     Functions: {
       // 原子地切换启用中的计划, 见 0002 迁移
       activate_plan: { Args: { p_plan_id: string }; Returns: undefined };
+      // 常吃套餐用过一次: 计数 +1 并记时间, 见 0007 迁移
+      touch_meal_template: { Args: { p_id: string }; Returns: undefined };
       // 手表配对与数据接口, 见 0004 迁移
       watch_create_pairing_code: {
         Args: Record<string, never>;
