@@ -10,6 +10,7 @@
 // ============================================================================
 import JSZip from "jszip";
 import { toCSV, type Row } from "@/lib/utils/export";
+import { WEIGHT_CONVENTION, WEIGHT_CAVEATS } from "@/lib/constants/weight-convention";
 
 export interface BundleData {
   profile: Row | null;
@@ -70,9 +71,13 @@ const DATA_DICTIONARY = `## 数据字典
 | date | 训练日期 |
 | workout_day | 训练日主题（如「上肢 A」） |
 | exercise | 动作名称 |
-| weight_kg | 负重 |
+| weight_kg | 负重，口径见下方说明 |
 | sets / reps | 组数 / 每组次数 |
 | rir | Reps In Reserve，留了几次余力（0=力竭） |
+
+${WEIGHT_CONVENTION}
+
+${WEIGHT_CAVEATS}
 
 ### exercise_pr 各动作历史最好成绩
 \`estimated_1rm_kg\` 用 Epley 公式估算：\`1RM = 重量 × (1 + 次数/30)\`。

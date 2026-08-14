@@ -6,6 +6,7 @@ import { todayISO, fmtDateLong } from "@/lib/utils/date";
 import { r2, epley1rm } from "@/lib/utils/pr";
 import type { WorkoutLog } from "@/lib/types/database";
 import { Card, Field, EmptyState } from "@/components/ui";
+import { WEIGHT_HINT } from "@/lib/constants/weight-convention";
 
 export default function WorkoutsManager({ list }: { list: WorkoutLog[] }) {
   const [state, formAction, pending] = useActionState(createWorkout, undefined);
@@ -24,7 +25,7 @@ export default function WorkoutsManager({ list }: { list: WorkoutLog[] }) {
           <Field label="动作">
             <input name="exercise" className="input" placeholder="如：卧推" required />
           </Field>
-          <Field label="重量(kg)">
+          <Field label="重量(kg)" hint={WEIGHT_HINT}>
             <input name="weight_kg" type="number" step="0.5" className="input" />
           </Field>
           <Field label="组数">

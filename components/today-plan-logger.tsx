@@ -13,6 +13,7 @@ import {
 } from "@/lib/types/database";
 import { Card } from "@/components/ui";
 import { fmtRange, fmtSetsReps } from "@/components/plan-creator";
+import { WEIGHT_HINT, WEIGHT_RULE } from "@/lib/constants/weight-convention";
 
 /**
  * 今日计划快速记录。
@@ -77,6 +78,11 @@ export default function TodayPlanLogger({
         </Link>
       </div>
 
+      {/* 重量口径提示: 记法不一致会让 1RM 与容量统计出现系统性偏差 */}
+      <p className="mb-3 text-xs text-neutral-400" title={WEIGHT_RULE}>
+        重量填写：{WEIGHT_HINT}（{WEIGHT_RULE}）
+      </p>
+
       <form action={formAction} className="space-y-2">
         <input type="hidden" name="date" value={todayISO()} />
         <input type="hidden" name="workout_day" value={day.title} />
@@ -93,6 +99,12 @@ export default function TodayPlanLogger({
 
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
                 <span className="font-medium">{e.exercise}</span>
+                {/* 器材类型直接决定重量怎么记(杠铃含杆/哑铃单只), 显示出来省得每次想 */}
+                {e.equipment && (
+                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                    {e.equipment}
+                  </span>
+                )}
                 <span className="text-xs text-neutral-500">
                   目标 {fmtSetsReps(e)}
                   {e.rir_min !== null && ` · RIR ${fmtRange(e.rir_min, e.rir_max)}`}

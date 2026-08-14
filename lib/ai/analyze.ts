@@ -1,6 +1,7 @@
 // AI 综合分析: 汇总近 N 天数据 → 结构化增肌分析报告
 import { chatJSON } from "@/lib/ai/client";
 import type { AiAnalysisReport } from "@/lib/types/database";
+import { WEIGHT_CONVENTION, WEIGHT_CAVEATS } from "@/lib/constants/weight-convention";
 
 export interface AnalysisContext {
   period_start: string;
@@ -68,7 +69,11 @@ export async function analyzePeriod(ctx: AnalysisContext): Promise<AiAnalysisRep
 - 增肌期理想增重约 0.25-0.5kg/周; 过快易囤脂, 过慢则热量不足
 - 蛋白摄入建议 1.6-2.2g/kg 体重
 - 综合体重/腰围/蛋白/训练量/RIR 判断
-- 建议要具体、可执行, 不要空话`;
+- 建议要具体、可执行, 不要空话
+
+${WEIGHT_CONVENTION}
+
+${WEIGHT_CAVEATS}`;
 
   const user = `用户档案: ${JSON.stringify(ctx.profile || {})}
 分析区间: ${ctx.period_start} ~ ${ctx.period_end} (共 ${ctx.days} 天)
