@@ -89,7 +89,11 @@ export async function estimateNutrition(
   const user = `餐次: ${MEAL_LABEL[mealType]}\n食物描述: ${description}`;
 
   // temperature 0: 同一段描述应当给同一个结果, 否则点两次「重分析」得两个数
-  const json = (await chatJSON(system, user, 0)) as Partial<NutritionEstimate>;
+  //
+  // ?? {} 不是多余的: "null" 是合法 JSON, JSON.parse 后就是 null,
+  // 直接读 json.items 会抛 TypeError。模型偶尔真会吐这个。
+  const raw = await chatJSON(system, user, 0);
+  const json = (raw && typeof raw === "object" ? raw : {}) as Partial<NutritionEstimate>;
 
   const num = (v: unknown, min: number, max: number) => {
     const n = Number(v);

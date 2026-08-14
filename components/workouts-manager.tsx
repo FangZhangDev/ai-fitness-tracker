@@ -5,7 +5,7 @@ import { createWorkout, updateWorkout, deleteWorkout } from "@/lib/actions/worko
 import { todayISO, fmtDateLong } from "@/lib/utils/date";
 import { r2, epley1rm } from "@/lib/utils/pr";
 import type { WorkoutLog } from "@/lib/types/database";
-import { Card, Field, EmptyState } from "@/components/ui";
+import { Card, Field, EmptyState, runAction } from "@/components/ui";
 import { WEIGHT_HINT } from "@/lib/constants/weight-convention";
 
 export default function WorkoutsManager({ list }: { list: WorkoutLog[] }) {
@@ -73,7 +73,7 @@ export default function WorkoutsManager({ list }: { list: WorkoutLog[] }) {
                 {w.notes && <span className="text-neutral-400">{w.notes}</span>}
                 <div className="ml-auto flex gap-1">
                   <button onClick={() => setEditingId(w.id)} className="btn btn-ghost px-2 py-1 text-xs">编辑</button>
-                  <form action={async (fd) => { await deleteWorkout(fd); }}>
+                  <form action={async (fd) => { await runAction(deleteWorkout(fd)); }}>
                     <input type="hidden" name="id" value={w.id} />
                     <button className="btn btn-danger px-2 py-1 text-xs">删除</button>
                   </form>

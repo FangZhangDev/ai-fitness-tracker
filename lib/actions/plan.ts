@@ -167,7 +167,8 @@ export async function activatePlan(formData: FormData): Promise<ActionResult> {
  * 想调整计划又怕改坏时, 先复制再改副本, 原计划保持原样, 随时可以切回去。
  */
 export async function duplicatePlan(formData: FormData): Promise<ActionResult> {
-  const { supabase, userId } = await getCurrentUser();
+  // 只要 supabase 就够: 下面的查询由 RLS 限定在自己的数据上, 不需要显式 userId
+  const { supabase } = await getCurrentUser();
   const id = str(formData.get("id"));
   if (!id) return { error: "缺少计划 ID" };
 

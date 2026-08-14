@@ -5,7 +5,7 @@ import { deleteDay, deleteOne, deleteMany } from "@/lib/actions/data";
 import { r1, r2 } from "@/lib/utils/pr";
 import { fmtMonth, monthOf } from "@/lib/utils/date";
 import type { DailyMetric, MealLog, WorkoutLog } from "@/lib/types/database";
-import { Card, Badge, EmptyState, MEAL_TYPE_LABEL } from "@/components/ui";
+import { Card, Badge, EmptyState, MEAL_TYPE_LABEL, runAction } from "@/components/ui";
 
 export interface DayGroup {
   date: string;
@@ -237,7 +237,7 @@ function DayCard({
           {confirming ? (
             <form
               action={async (fd) => {
-                await deleteDay(fd);
+                await runAction(deleteDay(fd));
                 setConfirming(false);
               }}
               className="flex items-center gap-1"
@@ -364,7 +364,7 @@ function Row({
       <span className="w-12 shrink-0 pt-0.5 text-xs text-neutral-400">{label}</span>
       <div className="flex min-w-0 flex-1 flex-wrap items-baseline">{children}</div>
       {/* 只删一条时不必先勾选再批量删, 保留单条入口 */}
-      <form action={async (fd) => { await deleteOne(fd); }} className="shrink-0">
+      <form action={async (fd) => { await runAction(deleteOne(fd)); }} className="shrink-0">
         <input type="hidden" name="kind" value={kind} />
         <input type="hidden" name="id" value={id} />
         <button className="btn btn-ghost px-2 py-0.5 text-xs text-red-600">删除</button>

@@ -8,7 +8,7 @@ import {
   deletePlan,
 } from "@/lib/actions/plan";
 import type { WorkoutPlan } from "@/lib/types/database";
-import { Card, Badge, EmptyState } from "@/components/ui";
+import { Card, Badge, EmptyState, runAction } from "@/components/ui";
 
 /**
  * 计划列表: 切换启用、复制、重命名、删除。
@@ -83,7 +83,7 @@ export default function PlanManager({
                   {confirmId === p.id ? (
                     <form
                       action={async (fd) => {
-                        await deletePlan(fd);
+                        await runAction(deletePlan(fd));
                         setConfirmId(null);
                       }}
                       className="flex items-center gap-1"

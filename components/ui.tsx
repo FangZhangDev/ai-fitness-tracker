@@ -142,3 +142,19 @@ export const ACTIVITY_LABEL: Record<string, string> = {
   active: "活跃",
   very_active: "非常活跃",
 };
+
+/**
+ * 跑一个 server action, 失败时把错误摆出来。
+ *
+ * 这些删除/重分析按钮原先写成 `await deleteX(fd)`, 返回的 { error } 被直接丢掉,
+ * 于是会话过期之类的失败表现为「点了没反应」, 最难排查的那种。
+ * 这里用 alert 是刻意的最小实现 —— 个人自用, 失败路径极少走到,
+ * 犯不上为它引入一套 toast; 真要换成好看的提示, 改这一个函数就够。
+ */
+export async function runAction<T extends { error?: string }>(
+  p: Promise<T>,
+): Promise<T> {
+  const res = await p;
+  if (res?.error && typeof window !== "undefined") window.alert(res.error);
+  return res;
+}

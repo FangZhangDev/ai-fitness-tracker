@@ -24,7 +24,19 @@ const TABLES = {
 type TableName = keyof typeof TABLES;
 
 export async function GET(request: NextRequest) {
-  const { supabase, userId } = await getCurrentUser();
+  // 中间件的 matcher 排除了 /api, 所以这里是未登录请求的第一道关。
+  // getCurrentUser 未登录时会抛, 不接住的话整个请求变成 500 —— 既误导人
+  // (看着像服务挂了), 也在日志里刷无谓的异常。明确回 401。
+  let auth: Awaited<ReturnType<typeof getCurrentUser>>;
+  try {
+    auth = await getCurrentUser();
+  } catch {
+    return new Response("未登录，请先登录后再导出", {
+      status: 401,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+  const { supabase, userId } = auth;
   const { searchParams } = new URL(request.url);
   const bundle = searchParams.get("bundle") as "md" | "zip" | "json" | null;
   const table = searchParams.get("table") as TableName | null;

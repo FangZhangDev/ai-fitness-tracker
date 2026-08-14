@@ -5,7 +5,7 @@ import { createDailyMetric, updateDailyMetric, deleteDailyMetric } from "@/lib/a
 import { todayISO, fmtDateLong } from "@/lib/utils/date";
 import { r1, r2 } from "@/lib/utils/pr";
 import type { DailyMetric } from "@/lib/types/database";
-import { Card, Field, EmptyState } from "@/components/ui";
+import { Card, Field, EmptyState, runAction } from "@/components/ui";
 
 export default function DailyMetricsManager({ list }: { list: DailyMetric[] }) {
   const [state, formAction, pending] = useActionState(createDailyMetric, undefined);
@@ -67,7 +67,7 @@ export default function DailyMetricsManager({ list }: { list: DailyMetric[] }) {
                 {m.notes && <span className="text-neutral-400">{m.notes}</span>}
                 <div className="ml-auto flex gap-1">
                   <button onClick={() => setEditingId(m.id)} className="btn btn-ghost px-2 py-1 text-xs">编辑</button>
-                  <form action={async (fd) => { await deleteDailyMetric(fd); }}>
+                  <form action={async (fd) => { await runAction(deleteDailyMetric(fd)); }}>
                     <input type="hidden" name="id" value={m.id} />
                     <button className="btn btn-danger px-2 py-1 text-xs">删除</button>
                   </form>

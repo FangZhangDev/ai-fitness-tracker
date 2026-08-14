@@ -13,7 +13,7 @@ import {
   type PlanDay,
   type PlanExercise,
 } from "@/lib/types/database";
-import { Card, Field } from "@/components/ui";
+import { Card, Field, runAction } from "@/components/ui";
 import { fmtRange, fmtSetsReps } from "@/components/plan-creator";
 
 /** 编辑启用中计划的内容: 改动作参数、增删、调顺序、改训练日主题 */
@@ -150,7 +150,7 @@ function ExerciseRow({
           <button onClick={() => setEditing(true)} className="btn btn-ghost px-2 py-0.5 text-xs">
             编辑
           </button>
-          <form action={async (fd) => { await deletePlanExercise(fd); }}>
+          <form action={async (fd) => { await runAction(deletePlanExercise(fd)); }}>
             <input type="hidden" name="id" value={ex.id} />
             <button className="btn btn-danger px-2 py-0.5 text-xs">删除</button>
           </form>

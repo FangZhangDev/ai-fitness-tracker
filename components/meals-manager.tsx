@@ -12,7 +12,7 @@ import { todayISO, fmtDateLong } from "@/lib/utils/date";
 import { r1 } from "@/lib/utils/pr";
 import type { MealLog, MealTemplate } from "@/lib/types/database";
 import { SLOT_LABEL, type MealSlot, type NutritionItem } from "@/lib/ai/nutrition";
-import { Card, Field, EmptyState, Badge, MEAL_TYPE_LABEL } from "@/components/ui";
+import { Card, Field, EmptyState, Badge, MEAL_TYPE_LABEL, runAction } from "@/components/ui";
 
 /**
  * 从 ai_raw 里取逐项明细。
@@ -247,13 +247,13 @@ export default function MealsManager({
                 <Badge color="indigo">{MEAL_TYPE_LABEL[m.meal_type]}</Badge>
                 {m.analyzed_at ? <Badge color="green">已分析</Badge> : <Badge color="amber">待分析</Badge>}
                 <div className="ml-auto flex gap-1">
-                  <form action={async (fd) => { await reanalyzeMeal(fd); }}>
+                  <form action={async (fd) => { await runAction(reanalyzeMeal(fd)); }}>
                     <input type="hidden" name="id" value={m.id} />
                     <input type="hidden" name="description" value={m.description} />
                     <input type="hidden" name="meal_type" value={m.meal_type} />
                     <button className="btn btn-ghost px-2 py-1 text-xs">重分析</button>
                   </form>
-                  <form action={async (fd) => { await deleteMeal(fd); }}>
+                  <form action={async (fd) => { await runAction(deleteMeal(fd)); }}>
                     <input type="hidden" name="id" value={m.id} />
                     <button className="btn btn-danger px-2 py-1 text-xs">删除</button>
                   </form>

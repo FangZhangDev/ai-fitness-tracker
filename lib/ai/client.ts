@@ -33,5 +33,8 @@ export async function chatJSON(
     temperature,
   });
   const content = res.choices[0]?.message?.content || "{}";
-  return JSON.parse(content);
+  const parsed = JSON.parse(content);
+  // 「null」「42」「"文本"」都是合法 JSON, 模型偶尔真会吐。调用方一律按对象取字段,
+  // 拿到非对象就会在 json.xxx 上抛 TypeError, 所以在这一层统一兜住。
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
 }
