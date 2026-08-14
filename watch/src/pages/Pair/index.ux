@@ -39,7 +39,6 @@
     },
 
     onInit() {
-      this.$page.setTitleBar({ visible: false })
       this.refresh()
     },
 

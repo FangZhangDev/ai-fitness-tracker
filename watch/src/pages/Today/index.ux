@@ -121,10 +121,7 @@
       weekdays: [],
     },
 
-    onInit() {
-      this.$page.setTitleBar({ visible: false })
-    },
-
+    // 标题栏由 manifest.json 的 display.titleBar 控制, 不在代码里调
     onShow() {
       // 每次回到本页都重新拉一次 —— 从记录页返回后进度要立刻更新
       this.boot()

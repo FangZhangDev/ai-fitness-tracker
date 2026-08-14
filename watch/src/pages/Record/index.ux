@@ -77,7 +77,6 @@
     },
 
     onInit() {
-      this.$page.setTitleBar({ visible: false })
       this.vals = {
         weight: Number(this.weight) || 0,
         sets: Number(this.sets) || 0,
