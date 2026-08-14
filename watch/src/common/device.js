@@ -5,32 +5,62 @@
  * 全部拿不到时降级为空实现: 少一个震动反馈没关系, 但绝不能因此白屏。
  */
 
-function pick(label, names) {
-  for (let i = 0; i < names.length; i++) {
-    try {
-      const m = require(names[i])
-      if (m) {
-        console.log('[device] ' + label + ' 使用 ' + names[i])
-        return m
-      }
-    } catch (e) {
-      // 继续试下一个
-    }
-  }
-  console.log('[device] ' + label + ' 全部候选都不可用: ' + names.join(', '))
-  return null
+// ---------------------------------------------------------------------------
+// 关键: require 的参数必须是「字面量字符串」
+//
+// 快应用/蓝河的编译器要靠静态分析 require('@xxx') 才能把对应 feature 打进包里。
+// 写成 require(变量) 时编译器识别不了, 运行期一律拿不到模块 —— 曾因此导致
+// 路由模块全部为 null, 表现为按钮点了没反应。所以下面只能一条条平铺展开,
+// 不能再抽成 pick(names) 那种循环。
+//
+// 蓝河应用的路由是 @blueos.app.appmanager.router;
+// @blueos.app.router 是表盘用的, 留作兜底。
+// ---------------------------------------------------------------------------
+
+let _router = null
+let _routerName = ''
+try {
+  _router = require('@blueos.app.appmanager.router')
+  _routerName = '@blueos.app.appmanager.router'
+} catch (e) {}
+if (!_router) {
+  try {
+    _router = require('@blueos.app.router')
+    _routerName = '@blueos.app.router'
+  } catch (e) {}
+}
+if (!_router) {
+  try {
+    _router = require('@system.router')
+    _routerName = '@system.router'
+  } catch (e) {}
 }
 
-// 注意: 蓝河应用里路由是 @blueos.app.appmanager.router
-// (@blueos.app.router 那个是表盘用的)。所有 feature 都必须先在
-// manifest.json 的 features 里声明, 否则 require 直接拿不到。
-const _router = pick('router', [
-  '@blueos.app.appmanager.router',
-  '@blueos.app.router',
-  '@system.router',
-])
-const _prompt = pick('prompt', ['@blueos.app.prompt', '@system.prompt'])
-const _vibrator = pick('vibrator', ['@blueos.hardware.vibrator', '@system.vibrator'])
+let _prompt = null
+try {
+  _prompt = require('@blueos.app.prompt')
+} catch (e) {}
+if (!_prompt) {
+  try {
+    _prompt = require('@system.prompt')
+  } catch (e) {}
+}
+
+let _vibrator = null
+try {
+  _vibrator = require('@blueos.hardware.vibrator')
+} catch (e) {}
+if (!_vibrator) {
+  try {
+    _vibrator = require('@system.vibrator')
+  } catch (e) {}
+}
+
+console.log(
+  '[device] router=' + (_routerName || '不可用') +
+    ' prompt=' + (_prompt ? 'ok' : '不可用') +
+    ' vibrator=' + (_vibrator ? 'ok' : '不可用')
+)
 
 /**
  * 安全调用: 方法不存在或抛错都不该让整个页面崩掉。

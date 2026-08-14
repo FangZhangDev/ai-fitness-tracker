@@ -11,19 +11,26 @@
 
 import { CONFIG } from '../config.js'
 
-// feature 名在官方文档不同页面出现过两种写法, 做兼容避免真机上直接崩
+// feature 名在官方文档不同页面出现过两种写法:
+//   @blueos.communication.network.fetch  「文件组织」「javascript 代码」两页用的是这个
+//   @blueos.network.fetch                「卡片配置」页用的是这个
+// 以前者优先。注意 require 的参数必须是字面量字符串, 否则编译器静态分析不到,
+// 运行期拿不到模块 (device.js 里踩过这个坑)。
 let _fetch = null
-function getFetch() {
-  if (_fetch) return _fetch
+let _fetchName = ''
+try {
+  _fetch = require('@blueos.communication.network.fetch')
+  _fetchName = '@blueos.communication.network.fetch'
+} catch (e) {}
+if (!_fetch) {
   try {
     _fetch = require('@blueos.network.fetch')
-  } catch (e) {
-    try {
-      _fetch = require('@blueos.communication.network.fetch')
-    } catch (e2) {
-      _fetch = null
-    }
-  }
+    _fetchName = '@blueos.network.fetch'
+  } catch (e) {}
+}
+console.log('[api] fetch=' + (_fetchName || '不可用'))
+
+function getFetch() {
   return _fetch
 }
 
