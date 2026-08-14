@@ -35,14 +35,15 @@
         就能给标题让出整整一行宽度。长按可切换训练日。
 
         标题过长时用 marquee 滚动完整显示; 够短就用普通 text, 免得没必要地动。
-        scrollamount 是每秒滚动的像素数, 18 大约每秒半个汉字, 够从容看清。
+        scrollamount 实测偏快(文档称每秒像素数, 实际更接近每帧步进), 取 6 为宜;
+        嫌快继续往下调, 嫌慢往上调, 改这一个数字即可。
         loop=3 滚三遍即停, 不持续占帧率; 两端阴影默认开且为黑色, 与背景融合。
       -->
       <div class="header" onlongpress="openPickDay">
         <marquee
           if="{{ titleScroll }}"
           class="head-title-mq"
-          scrollamount="18"
+          scrollamount="6"
           loop="3"
           text-offset="80"
         >{{ title }}</marquee>
