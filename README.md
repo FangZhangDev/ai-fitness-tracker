@@ -11,7 +11,7 @@
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E)
-![BlueOS](https://img.shields.io/badge/BlueOS-vivo%20Watch%203-00E5A0)
+![BlueOS](https://img.shields.io/badge/BlueOS%203-vivo%20Watch-00E5A0)
 
 </div>
 
@@ -38,7 +38,7 @@
 
 界面是 PC 侧边栏 + 移动端底部 Tab，深色模式自适应。
 
-### 手表端（vivo Watch 3 / BlueOS 蓝河）
+### 手表端（vivo BlueOS 3 全系手表）
 
 ```
         今日计划                    记录
@@ -57,6 +57,15 @@
 - **整周计划离线缓存**，靠版本号增量校验；没网照常看，还能切到别的训练日
 - 打勾记录先落本地队列，联网自动补传；同一天同一动作是覆盖语义，不会产生脏数据
 - 预填的是**历史最大重量**，打开就是自己的最好成绩，通常只需微调
+- 屏幕每次交互续 30 秒，到点交还系统息屏——常亮太费电，系统默认那几秒又不够看完一组
+
+**支持机型**：面向 **BlueOS 3 全系** vivo 手表（Watch 3 / Watch 5 / Watch GT / Watch GT2）。
+`manifest.json` 声明了 `watch` / `watch-round` / `watch-square` 三种形态，
+`designWidth` 466 按圆屏设计，方屏可用但未逐一调过版式。
+开发与真机验证在 **Watch 3** 上完成，其余机型欢迎实测反馈。
+
+> 想支持非 vivo 手表（Wear OS、HarmonyOS 等）？那是另一套框架，本仓库不打算维护；
+> 欢迎 fork 自行实现——后端的三个 RPC 接口是通用的，照着 `watch/src/common/api.js` 接即可。
 
 细节见 [`watch/README.md`](watch/README.md)。
 
@@ -169,7 +178,7 @@ ai-fitness-tracker/
 │   ├── constants/           # 共享常量
 │   └── utils/               # 日期 / PR / 导出
 ├── supabase/migrations/     # SQL 迁移
-├── watch/                   # ⌚ vivo Watch 3 蓝河应用
+├── watch/                   # ⌚ 蓝河(BlueOS)手表应用
 │   ├── src/                 # 页面 (.ux) 与公共模块
 │   └── proxy/               # HTTP 转发服务 (Node 版 / Python 版)
 ├── proxy.ts                 # 路由保护 + 会话刷新 (Next 16 的 proxy, 原 middleware)

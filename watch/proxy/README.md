@@ -4,7 +4,8 @@
 
 ## 为什么需要它
 
-vivo Watch 3 上，蓝河快应用的 `fetch` 通道**发不出 HTTPS 请求**。实测（手表时间正确、`net:bluetooth`）：
+蓝河（BlueOS）快应用的 `fetch` 通道**发不出 HTTPS 请求**。以下实测在 Watch 3 上完成
+（手表时间正确、`net:bluetooth`）：
 
 | 目标 | 结果 |
 |---|---|

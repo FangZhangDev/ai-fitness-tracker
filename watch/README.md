@@ -1,7 +1,16 @@
-# 健身计划 — vivo Watch 3 蓝河应用
+# 健身计划 — vivo 蓝河（BlueOS 3）手表应用
 
 在手表上查看今天该练什么、转表冠微调实际做的重量/次数/RIR、点一下记录。
 数据与网页端 `ai-fitness-tracker` 完全打通。
+
+**支持机型**：BlueOS 3 全系 vivo 手表（Watch 3 / Watch 5 / Watch GT / Watch GT2）。
+`manifest.json` 里 `deviceTypeList` 声明了 `watch` / `watch-round` / `watch-square`，
+版式按 `designWidth: 466` 的圆屏设计；方屏能跑，但没有逐一调过。
+开发与真机验证都在 **Watch 3** 上完成——其它机型如果版式有出入，
+基本都在 `designWidth` 与几处写死的 466px 上，欢迎提 issue 或 PR。
+
+非 vivo 手表（Wear OS / HarmonyOS 等）不在本仓库维护范围内。后端那几个
+RPC 是通用的，照着 `src/common/api.js` 接一套即可，欢迎 fork。
 
 ## 它长什么样
 
