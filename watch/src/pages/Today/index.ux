@@ -170,8 +170,14 @@
             self.stage = 'unpaired'
             return
           }
-          // 网络失败但有缓存 -> 继续用缓存, 只提示; 没缓存 -> 明确报错
-          self.banner = self.totalCount > 0 ? '离线中' : '连不上, 稍后重试'
+          // 有缓存就继续用, 只做轻提示; 没缓存时把真实错误显示出来,
+          // 否则「连不上」三个字什么也说明不了
+          if (self.totalCount > 0) {
+            self.banner = '离线中'
+          } else {
+            const m = (err && err.message) || '未知错误'
+            self.banner = String(m).substring(0, 40)
+          }
         })
     },
 
@@ -351,9 +357,11 @@
     width: 386px;
     margin-left: 40px;
     margin-top: 8px;
-    font-size: 20px;
+    font-size: 19px;
     color: #8a8a8e;
     text-align: center;
+    lines: 2;
+    text-overflow: ellipsis;
   }
 
   /* ---------- 列表 ---------- */
