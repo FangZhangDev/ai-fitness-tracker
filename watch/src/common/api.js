@@ -271,60 +271,83 @@ export function selfTest() {
   const f = getFetch()
   if (!f) return Promise.resolve('fetch模块不可用')
 
+  // 每个目标测两次取较好结果 —— 手表经蓝牙转发的网络抖动很大, 单次失败说明不了问题。
+  // 同时覆盖 http 与多个国内 https 站点, 用来区分「TLS 完全不可用」与「只是网络不稳」。
   const targets = [
     ['http', 'http://www.baidu.com'],
-    ['https', 'https://www.baidu.com'],
+    ['sBaidu', 'https://www.baidu.com'],
+    ['sQQ', 'https://www.qq.com'],
     ['db', CONFIG.SUPABASE_URL + '/rest/v1/'],
   ]
   const out = []
 
-  function step(i) {
-    if (i >= targets.length) {
-      return netType().then(function (nt) {
-        return 'net:' + nt + '  ' + out.join('  ')
-      })
-    }
+  /** 打一次, 返回 '200' 或 'E<code>' 或 'T'(超时) */
+  function hit(url) {
     return new Promise(function (resolve) {
       let done = false
       const guard = setTimeout(function () {
-        if (!done) {
-          done = true
-          out.push(targets[i][0] + ':超时')
-          resolve()
-        }
-      }, 9000)
+        if (!done) { done = true; resolve('T') }
+      }, 10000)
       try {
         f({
-          url: targets[i][1],
+          url: url,
           method: 'GET',
           responseType: 'text',
-          timeout: 8000,
+          timeout: 9000,
           success: function (res) {
             if (done) return
-            done = true
-            clearTimeout(guard)
-            out.push(targets[i][0] + ':' + res.code)
-            resolve()
+            done = true; clearTimeout(guard); resolve(String(res.code))
           },
           fail: function (d, c) {
             if (done) return
-            done = true
-            clearTimeout(guard)
-            out.push(targets[i][0] + ':E' + c)
-            resolve()
+            done = true; clearTimeout(guard); resolve('E' + c)
           },
         })
       } catch (e) {
-        if (!done) {
-          done = true
-          clearTimeout(guard)
-          out.push(targets[i][0] + ':异常')
-          resolve()
-        }
+        if (!done) { done = true; clearTimeout(guard); resolve('X') }
       }
-    }).then(function () {
-      return step(i + 1)
     })
   }
+
+  /** 两次里挑「成功」的那次: 纯数字即 HTTP 状态码, 视为连通 */
+  function best(a, b) {
+    const okA = /^[0-9]+$/.test(a)
+    const okB = /^[0-9]+$/.test(b)
+    if (okA) return a
+    if (okB) return b
+    return a === b ? a : a + '/' + b
+  }
+
+  /**
+   * 手表当前时间 —— TLS 握手要校验证书有效期, 系统时间偏差过大会让所有
+   * https 握手失败, 而 http 完全不受影响。这正好对应「http 通、https 全挂」。
+   * 年份不对(如 1970/2000)或日期明显偏离即为病因。
+   */
+  function timeStr() {
+    const d = new Date()
+    const p2 = function (n) { return n < 10 ? '0' + n : '' + n }
+    return (
+      d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) +
+      ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes())
+    )
+  }
+
+  function step(i) {
+    if (i >= targets.length) {
+      return netType().then(function (nt) {
+        return 'time:' + timeStr() + '  net:' + nt + '  ' + out.join('  ')
+      })
+    }
+    return hit(targets[i][1])
+      .then(function (r1) {
+        return hit(targets[i][1]).then(function (r2) {
+          out.push(targets[i][0] + ':' + best(r1, r2))
+        })
+      })
+      .then(function () {
+        return step(i + 1)
+      })
+  }
+
   return step(0)
 }
