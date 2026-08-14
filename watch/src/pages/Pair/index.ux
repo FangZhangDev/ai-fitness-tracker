@@ -29,8 +29,9 @@
   import * as store from '../../common/store.js'
   import * as device from '../../common/device.js'
 
-  // 表冠节流: 攒够这么多步进才跳一格, 数值越大越迟钝
-  const ROTATE_STEP = 3
+  // 表冠节流: 攒够这么多步进才跳一格, 数值越大越迟钝。
+  // 3 实测仍偏灵敏, 取 8; 嫌迟钝就往下调, 这是唯一的调节旋钮。
+  const ROTATE_STEP = 8
   let rotateAcc = 0
 
   export default {
