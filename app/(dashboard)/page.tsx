@@ -58,10 +58,16 @@ export default async function HomePage() {
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="当前体重" value={r2(weight)} sub={p?.target_weight_kg ? `目标 ${r2(p.target_weight_kg)}kg` : "—"} />
-        <Stat label="今日热量" value={todayNutrition.data?.total_calories ?? "—"} sub="kcal" />
-        <Stat label="今日蛋白" value={r1(todayNutrition.data?.total_protein_g)} sub="g" />
-        <Stat label="近7天训练" value={workoutDays} sub="天" />
+        <Stat
+          label="当前体重"
+          value={r2(weight)}
+          unit="kg"
+          // 没设目标就不显示第二行, 不要留一个孤零零的破折号
+          sub={p?.target_weight_kg ? `目标 ${r2(p.target_weight_kg)} kg` : undefined}
+        />
+        <Stat label="今日热量" value={todayNutrition.data?.total_calories ?? "—"} unit="kcal" />
+        <Stat label="今日蛋白" value={r1(todayNutrition.data?.total_protein_g)} unit="g" />
+        <Stat label="近7天训练" value={workoutDays} unit="天" sub="有训练记录的天数" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

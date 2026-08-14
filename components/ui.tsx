@@ -50,19 +50,38 @@ export function Field({
   );
 }
 
+/**
+ * 指标卡片。
+ *
+ * unit 与 sub 是两件事, 别再混用:
+ *   unit 紧跟数值(63.70 kg), 没有单位的指标不传
+ *   sub  第二行的补充说明(目标 70kg / 近 7 天)
+ * 早先只有 sub, 于是「今日热量」拿它当单位、「当前体重」拿它当目标,
+ * 结果体重那张卡片没地方写 kg, 没设目标时还剩一个孤零零的破折号。
+ *
+ * 值本身是占位符(—)时不显示单位, 「— kg」没有意义。
+ */
 export function Stat({
   label,
   value,
+  unit,
   sub,
 }: {
   label: string;
   value: ReactNode;
+  unit?: string;
   sub?: string;
 }) {
+  const hasValue = value !== "—" && value !== null && value !== undefined && value !== "";
   return (
     <Card className="p-4">
       <div className="text-xs text-neutral-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">
+        {value}
+        {unit && hasValue && (
+          <span className="ml-1 text-sm font-normal text-neutral-400">{unit}</span>
+        )}
+      </div>
       {sub && <div className="mt-0.5 text-xs text-neutral-400">{sub}</div>}
     </Card>
   );
