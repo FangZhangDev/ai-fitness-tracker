@@ -32,7 +32,19 @@
     <div else class="wrap">
       <!-- 顶部: 训练日 + 进度. 长按可切换训练日 -->
       <div class="header" onlongpress="openPickDay">
-        <text class="head-title">{{ title }}</text>
+        <!--
+          标题过长时用 marquee 滚动完整显示; 够短就用普通 text, 免得没必要地动。
+          loop=3 滚三遍即停, 不持续占帧率; 两端阴影默认开且为黑色, 正好与背景融合。
+          进度不滚动, 始终固定在右侧。
+        -->
+        <marquee
+          if="{{ titleScroll }}"
+          class="head-title-mq"
+          scrollamount="40"
+          loop="3"
+          text-offset="60"
+        >{{ title }}</marquee>
+        <text else class="head-title">{{ title }}</text>
         <text class="head-count">{{ doneCount }}/{{ totalCount }}</text>
       </div>
       <!-- 进度条: 唯一的强调色, 一眼看出还剩几个 -->
@@ -124,6 +136,7 @@
       weekday: null, // null = 跟随今天; 1..7 = 手动指定
       weekdays: [],
       pairHint: '',
+      titleScroll: false,
     },
 
     // 标题栏由 manifest.json 的 display.titleBar 控制, 不在代码里调
@@ -190,32 +203,31 @@
         })
     },
 
+    // 注意: 方法名不能叫 render —— 那是框架渲染引擎的保留名, 会被覆盖成非函数
     applyPlan(payload) {
       if (!payload) return
-      // 分步日志: 渲染链路上任何一步抛 not a function 都能立刻定位
       try {
         const list = payload.exercises || []
-        console.log('[today] applyPlan 动作数=' + list.length)
-
         for (let i = 0; i < list.length; i++) {
           list[i].subtitle = buildSubtitle(list[i])
         }
-        console.log('[today] subtitle 完成')
 
         this.title = payload.title || '今天'
+        // 标题区可用约 300px(466 减去进度与边距), 32px 字号约容 9 个汉字
+        this.titleScroll = this.title.length > 9
         this.doneCount = payload.done_count || 0
         this.totalCount = payload.total_count || 0
-        console.log('[today] 标量赋值完成 total=' + this.totalCount)
-
         this.exercises = list
-        console.log('[today] 列表赋值完成')
-
         // 进度条总宽 386px (466 - 左右各 40)
         this.barWidth = this.totalCount
           ? Math.round((386 * this.doneCount) / this.totalCount)
           : 0
-        console.log('[today] applyPlan 完成')
+
+        console.log(
+          '[today] applyPlan 完成 ' + this.doneCount + '/' + this.totalCount
+        )
       } catch (e) {
+        // 出问题时才输出完整堆栈, 平时不占日志
         console.log('[today] applyPlan 异常: ' + e + ' | stack=' + (e && e.stack))
         throw e
       }
@@ -356,6 +368,13 @@
     lines: 1;
     text-overflow: ellipsis;
     flex: 1;
+  }
+  /* 跑马灯: 与静态标题同字号同色, 切换时视觉上无跳变 */
+  .head-title-mq {
+    flex: 1;
+    height: 44px;
+    font-size: 32px;
+    color: #ffffff;
   }
   .head-count {
     font-size: 28px;

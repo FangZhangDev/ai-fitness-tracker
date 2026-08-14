@@ -113,11 +113,103 @@ Supabase → SQL Editor 执行 `supabase/migrations/0004_watch_pairing.sql`（�
 - 图片资源要压缩；本应用只有一个 114×114 图标，没有其它图片
 - 避免频繁 `setInterval`；表冠事件本身触发频率就高，回调里只做算术不做 IO
 
-## 已知的坑
+## 已知的坑（实机踩过，都有对应 commit）
 
-- **feature 名有多个版本**：官方文档不同页面里 fetch 出现过
-  `blueos.network.fetch` 和 `blueos.communication.network.fetch` 两种写法。
-  `api.js` 和 `device.js` 都做了逐个 try 的兼容，`manifest.json` 里两个都声明了。
-  真机上如果仍报 feature 不存在，看 DevTools 日志确认实际名字再改 `manifest.json`。
-- **表冠必须获焦**：一页只能有一个焦点组件，页面里用 `requestFocus(true)` 抢焦点。
-  如果表冠没反应，先确认 `onReady` 里拿到了 `$element('root')`。
+这些在官方文档里基本查不到，改代码前先看一眼能省很多事。
+
+### 1. `render` 是框架保留名
+
+页面对象里**不能定义叫 `render` 的方法**——蓝河是 MVVM 框架，`render` 属于渲染
+引擎内部方法，同名会被覆盖成非函数，调用时报 `not a function`，且方法内的
+try/catch 根本进不去（因为压根没进入函数）。本项目改叫 `applyPlan`。
+文档只提过「不要用 for/if/show/tid 等保留字」，没列 `render`。
+
+### 2. 原生模块的方法**不可枚举**
+
+`Object.keys(mod)` 对所有 feature 模块一律返回**空数组**，哪怕模块完全可用。
+排查时千万别拿 keys 判断有没有方法——只能：
+
+```js
+if (typeof mod.fetch === 'function') { /* 可用 */ }
+```
+
+（曾据此误判模块是空壳，绕了好几轮。）
+
+### 3. `require` 的参数必须是字面量
+
+编译器靠静态分析 `require('@字面量')` 把 feature 打进包，写成 `require(变量)`
+运行期一定拿不到模块。所以候选模块只能一条条平铺展开，不能抽成循环。
+更稳的是直接用静态 `import`。
+
+### 4. feature 必须在 manifest 声明，且名字有多个版本
+
+「在使用接口时，需要先在 manifest 中声明接口」——没声明就 `require` 不到。
+而同一能力在不同文档页给的名字还不一样，实测结果：
+
+| 能力 | 可用的名字 | 不可用 |
+|------|-----------|--------|
+| 网络 | `@blueos.network.fetch`、`@system.fetch` | `@blueos.communication.network.fetch` |
+| 路由 | `@blueos.app.appmanager.router` | `@blueos.app.router`（那是表盘用的） |
+| 存储 | `@blueos.storage.storage`、`@system.storage` | — |
+| 振动 | `@blueos.hardware.vibrator` | — |
+| 弹窗 | 均未找到，`showToast` 恒为 undefined | `@blueos.app.prompt`、`@system.prompt` |
+
+代码里对每个能力都留了多候选，启动时打印实际命中的名字。
+
+### 5. 路由 uri 认页面名，不认 `path`
+
+`router.push` 的 uri 匹配 `router.pages` 的 **key**（相对 `src` 的目录路径），
+自定义 `path` 字段匹配不上。本项目干脆不写 `path`，让它回落到默认
+`/<页面名称>`，key 与 uri 天然一致：
+
+```
+key "pages/Pair"  →  uri "/pages/Pair"  →  src/pages/Pair/index.ux
+```
+
+key 写错会在编译期报 `resolve entries error, error: 4006`。
+
+### 6. `$page.setTitleBar()` 不存在
+
+那是标准快应用（华为/小米系）的 API，蓝河没有，调用会导致启动即崩。
+标题栏用 `manifest.json` 的 `display.titleBar` 控制。
+
+### 7. 标量返回值别用 `responseType: 'json'`
+
+后端返回 `text` 时 PostgREST 输出 `"abc123"` 这种带引号的标量 JSON，
+`json` 模式下框架的处理不可控，拿到的不是字符串。统一用
+`responseType: 'text'` 再自己 `JSON.parse`：`"abc"` → 字符串、`{...}` → 对象、
+纯文本 → 原样。
+
+### 8. 表冠必须获焦
+
+一页只能有一个焦点组件，用 `requestFocus(true)` 抢。表冠没反应先确认
+`onReady` 里拿到了 `$element('root')`。
+
+### 9. DevTools 的 `DevtoolsElement not found parentId:xx` 可以无视
+
+列表整体替换时 DevTools 的元素树镜像跟不上节点重建，只在连着调试器时出现，
+不影响应用，打包到真机上没有。注意它的标签是 `DevtoolsElement` 而非 `CustomLog`
+（后者才是应用自己打的日志）。
+
+## 调试
+
+应用启动时会打印各模块的探测结果，出问题先看这几行：
+
+```
+[store] storage可用=@blueos.storage.storage
+[api] fetch可调用=@blueos.network.fetch
+[device] router=@blueos.app.appmanager.router push=function,back=function,replace=function
+```
+
+运行期关键节点：
+
+```
+[sync] loadToday 开始 wd=null
+[sync] 缓存阶段 hit=false
+[api] -> watch_get_today
+[api] <- watch_get_today http200 type=object raw={...}
+[today] applyPlan 完成 1/8
+[sync] flushPending 开始 / 待补传 N 条
+```
+
+首页出错时 banner 会直接显示错误原文与 stack 首行，点它可重试。

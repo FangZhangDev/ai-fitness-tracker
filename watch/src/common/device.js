@@ -36,10 +36,18 @@ if (!_router) {
   } catch (e) {}
 }
 
+// 实测 @blueos.app.prompt 与 @system.prompt 的 showToast 都是 undefined,
+// 官方文档「通知能力 > 弹窗」未给出确切 feature 名, 这里再多试一个命名。
+// 拿不到也不影响使用: 记录成功有振动反馈, 返回列表还能看到 ✓ 与进度变化。
 let _prompt = null
 try {
-  _prompt = require('@blueos.app.prompt')
+  _prompt = require('@blueos.notification.prompt')
 } catch (e) {}
+if (!_prompt) {
+  try {
+    _prompt = require('@blueos.app.prompt')
+  } catch (e) {}
+}
 if (!_prompt) {
   try {
     _prompt = require('@system.prompt')

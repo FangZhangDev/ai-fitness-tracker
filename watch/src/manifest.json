@@ -10,6 +10,7 @@
   "features": [
     { "name": "blueos.app.appmanager.router" },
     { "name": "blueos.app.router" },
+    { "name": "blueos.notification.prompt" },
     { "name": "blueos.app.prompt" },
     { "name": "blueos.communication.network.fetch" },
     { "name": "blueos.network.fetch" },
