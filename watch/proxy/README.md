@@ -19,9 +19,73 @@ vivo Watch 3 上，蓝河快应用的 `fetch` 通道**发不出 HTTPS 请求**�
 
 而 Supabase 强制 https，所以中间必须有一跳。
 
-## 部署
+## 方案一：跑在常开的 Mac 上（零成本，推荐先试）
 
-### 1. 服务器要求（极低）
+macOS 自带 python3，**不用装任何东西**：
+
+```bash
+cd 到本目录
+python3 server.py            # 默认 8080
+PORT=9000 python3 server.py  # 换端口
+```
+
+首次运行 macOS 会弹窗询问「是否允许接受传入网络连接」，选**允许**。
+
+### 查 Mac 的内网 IP
+
+```bash
+ipconfig getifaddr en0     # Wi-Fi
+ipconfig getifaddr en1     # 有线
+```
+
+得到形如 `192.168.1.23` 的地址，手表端 `config.js` 就填 `http://192.168.1.23:8080`。
+
+### 关键前提
+
+手表不能连 Wi-Fi，它走蓝牙经手机上网。所以**只有当手机也连着同一个家庭 Wi-Fi 时**，
+手表的请求才可能到达这台 Mac。也就是说：
+
+- **在家**：手机连家里 Wi-Fi → 手表可同步（拉计划、上传记录）
+- **在健身房**：手机用移动数据 → 手表连不上 Mac，但**离线缓存与补传队列会接管**，
+  记录照常，回家自动补传
+
+这套用法与应用已实现的离线机制天然契合：出门前在家同步当天计划，练完回家自动上传。
+
+### 两个注意事项
+
+1. **Mac 的 IP 会变**。去路由器管理页给这台 Mac 绑定固定 IP（DHCP 静态分配），
+   否则哪天 IP 变了就得重新打包手表应用。
+2. **Mac 睡眠时服务会停**。系统设置 → 电池/节能 里关掉自动睡眠，
+   或至少设置「接入电源时不睡眠」。
+
+### 让它开机自启（可选）
+
+```bash
+# 把 server.py 放到固定位置，例如 ~/watch-proxy/server.py
+mkdir -p ~/Library/LaunchAgents
+cat > ~/Library/LaunchAgents/com.fzg.watchproxy.plist <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.fzg.watchproxy</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/你的用户名/watch-proxy/server.py</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict>
+</plist>
+EOF
+launchctl load ~/Library/LaunchAgents/com.fzg.watchproxy.plist
+```
+
+## 方案二：跑在公网服务器上
+
+### 服务器要求（极低）
+
 
 | 资源 | 需要 |
 |---|---|
@@ -32,11 +96,12 @@ vivo Watch 3 上，蓝河快应用的 `fetch` 通道**发不出 HTTPS 请求**�
 
 最低配的云服务器足够。**关键：用非 80/443 端口**（如 8080），国内服务器可免 ICP 备案。
 
-### 2. 启动
+### 启动
 
 ```bash
-# 上传 server.js 到服务器后
-PORT=8080 node server.js
+# 上传后二选一，功能完全一致
+PORT=8080 node server.js     # Node 版
+PORT=8080 python3 server.py  # Python 版
 ```
 
 环境变量：
@@ -46,7 +111,7 @@ PORT=8080 node server.js
 | `PORT` | `8080` | 监听端口，避开 80/443 |
 | `SUPABASE_URL` | 项目的 Supabase 地址 | 上游地址 |
 
-### 3. 常驻运行
+### 常驻运行
 
 ```bash
 # systemd（推荐）
@@ -70,14 +135,14 @@ sudo systemctl enable --now watch-proxy
 
 记得在云厂商的**安全组**里放行该端口。
 
-### 4. 验证
+### 验证
 
 ```bash
 curl http://你的IP:8080/health
 # {"ok":true,"upstream":"xxx.supabase.co"}
 ```
 
-### 5. 配置手表端
+## 配置手表端（两种方案都一样）
 
 改 `watch/src/config.js` 一行，然后重新打包：
 
