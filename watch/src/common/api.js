@@ -14,24 +14,54 @@ import { CONFIG } from '../config.js'
 // feature 名在官方文档不同页面出现过两种写法:
 //   @blueos.communication.network.fetch  「文件组织」「javascript 代码」两页用的是这个
 //   @blueos.network.fetch                「卡片配置」页用的是这个
-// 以前者优先。注意 require 的参数必须是字面量字符串, 否则编译器静态分析不到,
-// 运行期拿不到模块 (device.js 里踩过这个坑)。
-let _fetch = null
+// 以前者优先。
+//
+// 两个坑:
+//  1. require 的参数必须是字面量字符串, 否则编译器静态分析不到, 运行期拿不到模块
+//  2. require 拿到的是整个模块对象, 真正的 API 可能包在 default 里
+//     (store.js 用 `import storage from` 取的是 default, 所以一直正常;
+//      这里用 require 就拿到了外层对象, 直接 .fetch() 会报 not a function)
+let _mod = null
 let _fetchName = ''
 try {
-  _fetch = require('@blueos.communication.network.fetch')
+  _mod = require('@blueos.communication.network.fetch')
   _fetchName = '@blueos.communication.network.fetch'
 } catch (e) {}
-if (!_fetch) {
+if (!_mod) {
   try {
-    _fetch = require('@blueos.network.fetch')
+    _mod = require('@blueos.network.fetch')
     _fetchName = '@blueos.network.fetch'
   } catch (e) {}
 }
-console.log('[api] fetch=' + (_fetchName || '不可用'))
+
+// 解包: 模块本身 / default / 再深一层, 逐个找出能调用的那个 fetch
+let _fetchFn = null
+function resolveFetchFn(m) {
+  if (!m) return null
+  if (typeof m === 'function') return m
+  if (typeof m.fetch === 'function') return function (o) { return m.fetch(o) }
+  if (m.default) {
+    const d = m.default
+    if (typeof d === 'function') return d
+    if (typeof d.fetch === 'function') return function (o) { return d.fetch(o) }
+  }
+  // 少数固件把方法叫 request
+  if (typeof m.request === 'function') return function (o) { return m.request(o) }
+  return null
+}
+_fetchFn = resolveFetchFn(_mod)
+
+console.log(
+  '[api] fetch模块=' + (_fetchName || '不可用') +
+    ' 可调用=' + (_fetchFn ? 'yes' : 'NO') +
+    ' 结构=' + (_mod ? typeof _mod + ':' + Object.keys(_mod).join('|') : '-') +
+    (_mod && _mod.default
+      ? ' default:' + typeof _mod.default + ':' + Object.keys(_mod.default).join('|')
+      : '')
+)
 
 function getFetch() {
-  return _fetch
+  return _fetchFn
 }
 
 /** 网络是否可用 (feature 拿不到就是环境不支持) */
@@ -47,7 +77,7 @@ function once(fn, params) {
       return
     }
     console.log('[api] -> ' + fn)
-    f.fetch({
+    f({
       url: CONFIG.SUPABASE_URL + '/rest/v1/rpc/' + fn,
       method: 'POST',
       responseType: 'json',

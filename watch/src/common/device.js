@@ -56,25 +56,39 @@ if (!_vibrator) {
   } catch (e) {}
 }
 
-console.log(
-  '[device] router=' + (_routerName || '不可用') +
-    ' prompt=' + (_prompt ? 'ok' : '不可用') +
-    ' vibrator=' + (_vibrator ? 'ok' : '不可用')
-)
+console.log('[device] router=' + (_routerName || '不可用') + ' ' + shape(_router))
+console.log('[device] prompt=' + shape(_prompt) + ' vibrator=' + shape(_vibrator))
 
 /**
  * 安全调用: 方法不存在或抛错都不该让整个页面崩掉。
  * 这些 feature 的方法名未在官方文档逐一列明, 真机上缺哪个都可能是 not a function。
  */
 function call(mod, method, arg) {
-  if (!mod || typeof mod[method] !== 'function') return false
-  try {
-    mod[method](arg)
-    return true
-  } catch (e) {
-    console.log('[device] ' + method + ' 调用失败: ' + e)
-    return false
+  if (!mod) return false
+  // require 拿到的可能是整个模块对象, 真正的 API 包在 default 里, 两处都试
+  const targets = [mod, mod.default]
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i]
+    if (t && typeof t[method] === 'function') {
+      try {
+        t[method](arg)
+        return true
+      } catch (e) {
+        console.log('[device] ' + method + ' 调用失败: ' + e)
+        return false
+      }
+    }
   }
+  console.log('[device] ' + method + ' 不存在')
+  return false
+}
+
+/** 打印模块结构, 排查 not a function 这类问题 */
+function shape(m) {
+  if (!m) return '-'
+  let s = typeof m + ':' + Object.keys(m).join('|')
+  if (m.default) s += ' default:' + typeof m.default + ':' + Object.keys(m.default).join('|')
+  return s
 }
 
 /** 路由是否可用 —— 页面可据此给出提示, 而不是让用户对着没反应的按钮发呆 */
