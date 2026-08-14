@@ -11,15 +11,15 @@
 
     <!-- 6 位数字: 转表冠改当前位, 点击切换位 -->
     <div class="code-row">
-      <div class="cell {{ $item.on ? 'cell-on' : '' }}" for="{{ cells }}" onclick="pick($idx)">
-        <text class="cell-text {{ $item.on ? 'cell-text-on' : '' }}">{{ $item.d }}</text>
+      <div class="{{ $item.cls }}" for="{{ cells }}" onclick="pick($idx)">
+        <text class="{{ $item.textCls }}">{{ $item.d }}</text>
       </div>
     </div>
 
     <text class="err">{{ err }}</text>
 
-    <div class="btn {{ busy ? 'btn-off' : '' }}" onclick="submit">
-      <text class="btn-text">{{ busy ? '配对中…' : '确认' }}</text>
+    <div class="{{ btnCls }}" onclick="submit">
+      <text class="btn-text">{{ btnText }}</text>
     </div>
   </div>
 </template>
@@ -36,6 +36,10 @@
       cells: [],
       err: '',
       busy: false,
+      hasErr: false,
+      // 模板专用派生字段, 理由同 Today 页
+      btnCls: 'btn',
+      btnText: '确认',
     },
 
     onInit() {
@@ -52,7 +56,13 @@
     refresh() {
       const list = []
       for (let i = 0; i < 6; i++) {
-        list.push({ d: String(this.digits[i]), on: i === this.idx })
+        const on = i === this.idx
+        list.push({
+          d: String(this.digits[i]),
+          on: on,
+          cls: on ? 'cell cell-on' : 'cell',
+          textCls: on ? 'cell-text cell-text-on' : 'cell-text',
+        })
       }
       this.cells = list
     },
@@ -76,10 +86,16 @@
       this.refresh()
     },
 
+    setBusy(v) {
+      this.busy = v
+      this.btnCls = v ? 'btn btn-off' : 'btn'
+      this.btnText = v ? '配对中…' : '确认'
+    },
+
     submit() {
       if (this.busy) return
       const code = this.digits.join('')
-      this.busy = true
+      this.setBusy(true)
       this.err = ''
       const self = this
 
@@ -88,32 +104,32 @@
         .then(function (token) {
           // token 是 64 位十六进制; 长度不对说明返回值被框架处理成了别的东西
           if (!token || token.length < 32) {
-            self.busy = false
+            self.setBusy(false)
             self.err = '返回异常 len=' + (token ? token.length : 0)
             return
           }
           return store.setToken(token).then(function (ok) {
             if (!ok) {
-              self.busy = false
+              self.setBusy(false)
               self.err = '保存失败 ' + store.storageDiag()
               return
             }
             // 写后立刻读回来确认 —— 否则跳过去才发现没存住, 又得重配一次
             return store.getToken().then(function (back) {
               if (!back) {
-                self.busy = false
+                self.setBusy(false)
                 self.err = '存了读不回 ' + store.storageDiag()
                 return
               }
               device.vibrate()
-              self.busy = false
+              self.setBusy(false)
               // replace: 免得用户按返回又回到配对页
               device.replace('/pages/Today')
             })
           })
         })
         .catch(function (e) {
-          self.busy = false
+          self.setBusy(false)
           const m = (e && e.message) || '未知错误'
           if (m.indexOf('code invalid') >= 0) {
             // 后端对过期/用过的码统一抛 code invalid or expired

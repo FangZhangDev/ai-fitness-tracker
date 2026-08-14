@@ -30,14 +30,14 @@
     <!-- 字段切换: 点哪个就调哪个 -->
     <div class="tabs">
       <div class="tab" for="{{ fields }}" onclick="setField($idx)">
-        <text class="tab-label {{ $item.on ? 'tab-on' : '' }}">{{ $item.label }}</text>
-        <text class="tab-value {{ $item.on ? 'tab-on' : '' }}">{{ $item.text }}</text>
+        <text class="{{ $item.labelCls }}">{{ $item.label }}</text>
+        <text class="{{ $item.valueCls }}">{{ $item.text }}</text>
       </div>
     </div>
 
     <!-- 完成 -->
-    <div class="done-btn {{ saving ? 'done-btn-off' : '' }}" onclick="save">
-      <text class="done-text">{{ saving ? '保存中…' : '完成' }}</text>
+    <div class="{{ doneCls }}" onclick="save">
+      <text class="done-text">{{ doneText }}</text>
     </div>
   </div>
 </template>
@@ -78,6 +78,9 @@
       displayUnit: 'kg',
       fields: [],
       saving: false,
+      // 模板专用派生字段: 真机上模板内的三元/表达式不可靠, 一律在 JS 里算好
+      doneCls: 'done-btn',
+      doneText: '完成',
     },
 
     onInit() {
@@ -102,10 +105,13 @@
       const list = []
       for (let i = 0; i < FIELDS.length; i++) {
         const f = FIELDS[i]
+        const on = i === this.fieldIdx
         list.push({
           label: f.label,
           text: fmt(this.vals[f.key]),
-          on: i === this.fieldIdx,
+          on: on,
+          labelCls: on ? 'tab-label tab-on' : 'tab-label',
+          valueCls: on ? 'tab-value tab-on' : 'tab-value',
         })
       }
       this.fields = list
@@ -147,9 +153,16 @@
       this.refresh()
     },
 
+    /** saving 改变时同步按钮样式与文案 */
+    setSaving(v) {
+      this.saving = v
+      this.doneCls = v ? 'done-btn done-btn-off' : 'done-btn'
+      this.doneText = v ? '保存中…' : '完成'
+    },
+
     save() {
       if (this.saving) return
-      this.saving = true
+      this.setSaving(true)
       const self = this
 
       const log = {
@@ -164,7 +177,7 @@
 
       store.getToken().then(function (token) {
         if (!token) {
-          self.saving = false
+          self.setSaving(false)
           device.toast('未配对')
           return
         }
@@ -173,11 +186,11 @@
           .then(function (synced) {
             device.vibrate()
             device.toast(synced ? '已记录' : '已保存, 联网后自动上传')
-            self.saving = false
+            self.setSaving(false)
             device.back()
           })
           .catch(function (err) {
-            self.saving = false
+            self.setSaving(false)
             if (api.isUnpaired(err)) {
               store.clearToken()
               device.toast('配对已失效, 请重新配对')

@@ -1,29 +1,29 @@
 <template>
   <div class="page">
     <!-- ============ 加载中 ============ -->
-    <div if="{{ stage === 'loading' }}" class="center">
+    <div if="{{ isLoading }}" class="center">
       <text class="hint">载入中…</text>
     </div>
 
     <!-- ============ 未配对 ============ -->
-    <div elif="{{ stage === 'unpaired' }}" class="center">
+    <div elif="{{ isUnpaired }}" class="center">
       <text class="big-icon">⌚</text>
       <text class="title-sm">还没配对</text>
       <text class="hint">在网页「手表」页生成配对码</text>
       <div class="btn" onclick="goPair">
         <text class="btn-text">去配对</text>
       </div>
-      <text if="{{ pairHint }}" class="err-hint">{{ pairHint }}</text>
+      <text if="{{ hasPairHint }}" class="err-hint">{{ pairHint }}</text>
     </div>
 
     <!-- ============ 选择训练日 ============ -->
-    <div elif="{{ stage === 'pickday' }}" class="wrap">
+    <div elif="{{ isPickday }}" class="wrap">
       <div class="header">
         <text class="head-title">选择训练日</text>
       </div>
       <list class="list" id="daylist">
         <list-item type="day" class="day-item" for="{{ weekdays }}" onclick="chooseDay($idx)">
-          <text class="day-text {{ $item.current ? 'day-on' : '' }}">{{ $item.label }}</text>
+          <text class="{{ $item.cls }}">{{ $item.label }}</text>
         </list-item>
       </list>
     </div>
@@ -55,10 +55,10 @@
       </div>
 
       <!-- 离线/同步状态, 只在有异常时占位 -->
-      <text if="{{ banner }}" class="banner" onclick="boot">{{ banner }}</text>
+      <text if="{{ hasBanner }}" class="banner" onclick="boot">{{ banner }}</text>
 
       <!-- 今天没有安排 -->
-      <div if="{{ totalCount === 0 }}" class="center-rest">
+      <div if="{{ isEmpty }}" class="center-rest">
         <text class="big-icon">🌙</text>
         <text class="hint">今天休息</text>
         <text class="hint-sm">长按标题可切换训练日</text>
@@ -72,10 +72,10 @@
             缺字时会渲染成方块。未完成=灰色空心圈, 已完成=强调色实心圆。
           -->
           <div class="dot-wrap">
-            <div class="dot {{ $item.done ? 'dot-on' : '' }}"></div>
+            <div class="{{ $item.dotCls }}"></div>
           </div>
           <div class="item-body">
-            <text class="item-name {{ $item.done ? 'item-name-done' : '' }}">{{ $item.exercise }}</text>
+            <text class="{{ $item.nameCls }}">{{ $item.exercise }}</text>
             <text class="item-sub">{{ $item.subtitle }}</text>
           </div>
         </list-item>
@@ -145,6 +145,16 @@
       weekdays: [],
       pairHint: '',
       titleScroll: false,
+      // ↓ 以下均为模板专用的派生字段。
+      // 真机上模板里的条件「表达式」(如 stage === 'loading')不生效, 带这类
+      // 条件的元素会整个不渲染 —— 表现为满屏只剩没有条件的那几个元素。
+      // 官方性能文档也要求不要在模板里写复杂表达式, 故一律在 JS 里算好。
+      isLoading: true,
+      isUnpaired: false,
+      isPickday: false,
+      isEmpty: true,
+      hasBanner: false,
+      hasPairHint: false,
     },
 
     // 标题栏由 manifest.json 的 display.titleBar 控制, 不在代码里调
@@ -153,11 +163,24 @@
       this.boot()
     },
 
+    /** 切换页面状态; 同步模板要用的布尔字段 */
+    setStage(s) {
+      this.stage = s
+      this.isLoading = s === 'loading'
+      this.isUnpaired = s === 'unpaired'
+      this.isPickday = s === 'pickday'
+    },
+
+    setBanner(msg) {
+      this.banner = msg || ''
+      this.hasBanner = !!msg
+    },
+
     boot() {
       const self = this
       store.getToken().then(function (token) {
         if (!token) {
-          self.stage = 'unpaired'
+          self.setStage('unpaired')
           return
         }
         self.token = token
@@ -167,20 +190,20 @@
 
     load() {
       const self = this
-      if (self.stage !== 'pickday') self.stage = 'ready'
-      self.banner = ''
+      if (self.stage !== 'pickday') self.setStage('ready')
+      self.setBanner('')
 
       sync
         .loadToday(self.token, self.weekday, function (payload, fromCache) {
           self.applyPlan(payload)
-          if (fromCache) self.banner = '离线数据'
+          if (fromCache) self.setBanner('离线数据')
         })
         .then(function () {
-          self.banner = ''
+          self.setBanner('')
           // 顺手把攒下的离线记录补传
           return sync.flushPending(self.token).then(function (n) {
             if (n > 0) {
-              self.banner = '已补传 ' + n + ' 条'
+              self.setBanner('已补传 ' + n + ' 条')
               // 补传后服务端状态变了, 重新拉一次
               return api.getToday(self.token, self.weekday).then(function (p) {
                 self.applyPlan(p)
@@ -191,7 +214,7 @@
         .catch(function (err) {
           if (api.isUnpaired(err)) {
             store.clearToken()
-            self.stage = 'unpaired'
+            self.setStage('unpaired')
             return
           }
           // 有缓存就继续用, 只做轻提示; 没缓存时把真实错误显示出来,
@@ -201,12 +224,12 @@
               ' | stack=' + (err && err.stack)
           )
           if (self.totalCount > 0) {
-            self.banner = '离线中'
+            self.setBanner('离线中')
           } else {
             const m = (err && err.message) || '未知错误'
             // 把 stack 首行也带上, 直接指出出错位置
             const st = err && err.stack ? String(err.stack).split('\n')[0] : ''
-            self.banner = (String(m) + ' @' + st).substring(0, 60) + ' (点此重试)'
+            self.setBanner((String(m) + ' @' + st).substring(0, 60) + ' (点此重试)')
           }
         })
     },
@@ -217,7 +240,11 @@
       try {
         const list = payload.exercises || []
         for (let i = 0; i < list.length; i++) {
-          list[i].subtitle = buildSubtitle(list[i])
+          const it = list[i]
+          it.subtitle = buildSubtitle(it)
+          // class 也在这里算好, 模板里不做三元判断
+          it.dotCls = it.done ? 'dot dot-on' : 'dot'
+          it.nameCls = it.done ? 'item-name item-name-done' : 'item-name'
         }
 
         this.title = payload.title || '今天'
@@ -225,6 +252,7 @@
         this.titleScroll = this.title.length > 12
         this.doneCount = payload.done_count || 0
         this.totalCount = payload.total_count || 0
+        this.isEmpty = this.totalCount === 0
         this.exercises = list
         // 进度条总宽 386px (466 - 左右各 40)
         this.barWidth = this.totalCount
@@ -267,10 +295,15 @@
       const cur = this.weekday || sync.todayWeekday()
       const days = []
       for (let i = 1; i <= 7; i++) {
-        days.push({ label: WEEK_LABEL[i - 1], value: i, current: i === cur })
+        days.push({
+          label: WEEK_LABEL[i - 1],
+          value: i,
+          current: i === cur,
+          cls: i === cur ? 'day-text day-on' : 'day-text',
+        })
       }
       this.weekdays = days
-      this.stage = 'pickday'
+      this.setStage('pickday')
     },
 
     chooseDay(idx) {
@@ -278,7 +311,7 @@
       if (!d) return
       // 选中今天就恢复成「跟随今天」, 免得跨天后还停在旧的训练日
       this.weekday = d.value === sync.todayWeekday() ? null : d.value
-      this.stage = 'ready'
+      this.setStage('ready')
       this.load()
     },
 
@@ -286,6 +319,7 @@
       if (!device.push('/pages/Pair')) {
         // 路由模块没拿到时不要静默失败, 否则表现为「按钮点不动」
         this.pairHint = '路由不可用, 请查看 DevTools 日志'
+        this.hasPairHint = true
       }
     },
   }
