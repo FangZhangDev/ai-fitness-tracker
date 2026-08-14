@@ -56,8 +56,14 @@ if (!_vibrator) {
   } catch (e) {}
 }
 
-console.log('[device] router=' + (_routerName || '不可用') + ' ' + shape(_router))
-console.log('[device] prompt=' + shape(_prompt) + ' vibrator=' + shape(_vibrator))
+console.log(
+  '[device] router=' + (_routerName || '不可用') +
+    ' ' + shape(_router, ['push', 'back', 'replace'])
+)
+console.log(
+  '[device] prompt ' + shape(_prompt, ['showToast']) +
+    ' | vibrator ' + shape(_vibrator, ['vibrate', 'start'])
+)
 
 /**
  * 安全调用: 方法不存在或抛错都不该让整个页面崩掉。
@@ -83,12 +89,19 @@ function call(mod, method, arg) {
   return false
 }
 
-/** 打印模块结构, 排查 not a function 这类问题 */
-function shape(m) {
-  if (!m) return '-'
-  let s = typeof m + ':' + Object.keys(m).join('|')
-  if (m.default) s += ' default:' + typeof m.default + ':' + Object.keys(m.default).join('|')
-  return s
+/**
+ * 探测模块上指定方法是否存在。
+ * 注意: 蓝河原生模块的方法不可枚举, Object.keys() 一律为空 —— router 明明能用
+ * 却打印出空 keys, 曾因此误判。所以只按方法名逐个 typeof, 不看 keys。
+ */
+function shape(m, methods) {
+  if (!m) return 'null'
+  const parts = []
+  for (let i = 0; i < methods.length; i++) {
+    parts.push(methods[i] + '=' + typeof m[methods[i]])
+  }
+  if (m.default) parts.push('hasDefault')
+  return parts.join(',')
 }
 
 /** 路由是否可用 —— 页面可据此给出提示, 而不是让用户对着没反应的按钮发呆 */

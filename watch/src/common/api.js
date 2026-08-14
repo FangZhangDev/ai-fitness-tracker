@@ -11,61 +11,69 @@
 
 import { CONFIG } from '../config.js'
 
-// feature 名在官方文档不同页面出现过两种写法:
-//   @blueos.communication.network.fetch  「文件组织」「javascript 代码」两页用的是这个
-//   @blueos.network.fetch                「卡片配置」页用的是这个
-// 以前者优先。
+// ---------------------------------------------------------------------------
+// 蓝河的原生模块方法是「不可枚举」的: Object.keys(mod) 一律返回空数组,
+// 但方法确实存在且可调用 (router 就是最好的例子 —— keys 为空却能正常跳转)。
+// 所以判断一个模块能不能用, 唯一可靠的方式是直接 typeof mod.xxx === 'function',
+// 绝不能看 keys。
 //
-// 两个坑:
-//  1. require 的参数必须是字面量字符串, 否则编译器静态分析不到, 运行期拿不到模块
-//  2. require 拿到的是整个模块对象, 真正的 API 可能包在 default 里
-//     (store.js 用 `import storage from` 取的是 default, 所以一直正常;
-//      这里用 require 就拿到了外层对象, 直接 .fetch() 会报 not a function)
-// 主路径用静态 import —— store.js 的 `import storage from '@blueos.storage.storage'`
-// 被实测证明可用, 而同样目标用 require 一直拿不到, 所以这里跟它保持一致。
-// 另一个名字仍用 require 兜底。
-import fetchMod from '@blueos.communication.network.fetch'
+// feature 名官方文档给了两个, 实测 @blueos.communication.network.fetch
+// import 进来 .fetch 不是函数, 即该 feature 未注入; API 参考页写的
+// @blueos.network.fetch 才是正解。三个候选全部静态 import ——
+// require 在本工程实测拿不到东西, 而 import 一个不存在的 feature 只会得到
+// 空对象, 不会崩, 因此可以安全地都写上, 运行时挑能用的那个。
+// ---------------------------------------------------------------------------
+import fetchA from '@blueos.network.fetch'
+import fetchB from '@blueos.communication.network.fetch'
+import fetchC from '@system.fetch'
 
-let _mod = fetchMod || null
-let _fetchName = fetchMod ? '@blueos.communication.network.fetch(import)' : ''
-if (!_mod) {
-  try {
-    _mod = require('@blueos.communication.network.fetch')
-    _fetchName = '@blueos.communication.network.fetch(require)'
-  } catch (e) {}
-}
-if (!_mod) {
-  try {
-    _mod = require('@blueos.network.fetch')
-    _fetchName = '@blueos.network.fetch(require)'
-  } catch (e) {}
-}
-
-// 解包: 模块本身 / default / 再深一层, 逐个找出能调用的那个 fetch
-let _fetchFn = null
+/** 从一个模块里解出可调用的 fetch 函数; 解不出返回 null */
 function resolveFetchFn(m) {
   if (!m) return null
   if (typeof m === 'function') return m
   if (typeof m.fetch === 'function') return function (o) { return m.fetch(o) }
+  if (typeof m.request === 'function') return function (o) { return m.request(o) }
   if (m.default) {
     const d = m.default
     if (typeof d === 'function') return d
     if (typeof d.fetch === 'function') return function (o) { return d.fetch(o) }
+    if (typeof d.request === 'function') return function (o) { return d.request(o) }
   }
-  // 少数固件把方法叫 request
-  if (typeof m.request === 'function') return function (o) { return m.request(o) }
   return null
 }
-_fetchFn = resolveFetchFn(_mod)
 
-console.log(
-  '[api] fetch模块=' + (_fetchName || '不可用') +
-    ' 可调用=' + (_fetchFn ? 'yes' : 'NO') +
-    ' 结构=' + (_mod ? typeof _mod + ':' + Object.keys(_mod).join('|') : '-') +
-    (_mod && _mod.default
-      ? ' default:' + typeof _mod.default + ':' + Object.keys(_mod.default).join('|')
-      : '')
-)
+/** 探测单个模块, 只看方法类型, 不看 keys */
+function probe(m) {
+  if (!m) return 'null'
+  if (typeof m === 'function') return 'isFn'
+  return (
+    'fetch=' + typeof m.fetch +
+    ' request=' + typeof m.request +
+    ' default=' + typeof m.default
+  )
+}
+
+const CANDIDATES = [
+  { name: '@blueos.network.fetch', mod: fetchA },
+  { name: '@blueos.communication.network.fetch', mod: fetchB },
+  { name: '@system.fetch', mod: fetchC },
+]
+
+let _fetchFn = null
+let _fetchName = ''
+for (let i = 0; i < CANDIDATES.length; i++) {
+  const fn = resolveFetchFn(CANDIDATES[i].mod)
+  if (fn) {
+    _fetchFn = fn
+    _fetchName = CANDIDATES[i].name
+    break
+  }
+}
+
+console.log('[api] fetch可调用=' + (_fetchFn ? _fetchName : 'NO'))
+for (let i = 0; i < CANDIDATES.length; i++) {
+  console.log('[api]   ' + CANDIDATES[i].name + ' -> ' + probe(CANDIDATES[i].mod))
+}
 
 function getFetch() {
   return _fetchFn
@@ -77,12 +85,13 @@ function getFetch() {
  */
 export function diagText() {
   if (_fetchFn) return 'fetch ok: ' + _fetchName
-  if (!_mod) return 'fetch模块为空(import与require都没拿到)'
-  let s = 'fetch结构 ' + typeof _mod + ':' + Object.keys(_mod).join(',')
-  if (_mod.default) {
-    s += ' | default ' + typeof _mod.default + ':' + Object.keys(_mod.default).join(',')
+  // 三个候选逐个报告方法类型 (keys 不可枚举, 看它没意义)
+  const parts = []
+  for (let i = 0; i < CANDIDATES.length; i++) {
+    const short = CANDIDATES[i].name.replace('@blueos.', '').replace('@', '')
+    parts.push(short + ':' + probe(CANDIDATES[i].mod))
   }
-  return s
+  return parts.join('  /  ')
 }
 
 /** 网络是否可用 (feature 拿不到就是环境不支持) */
