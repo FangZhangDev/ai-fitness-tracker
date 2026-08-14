@@ -74,7 +74,7 @@ watch/
 ├── src/
 │   ├── manifest.json          应用配置 / 页面路由 / feature 声明
 │   ├── app.ux                 入口
-│   ├── config.js              API 地址、主题色、步进与取值范围
+│   ├── config.example.js      配置模板 (复制成 config.js 再填, 后者不入库)
 │   ├── common/
 │   │   ├── api.js             Supabase RPC 封装 + 超时重试
 │   │   ├── store.js           K-V 存储 + 离线队列
@@ -95,11 +95,17 @@ watch/
 > 依赖和构建配置由 BlueOS Studio 生成，所以**推荐先用 Studio 新建一个空工程，
 > 再把本目录的 `src/` 覆盖进去**，这样不会因为 toolkit 版本对不上而编译失败。
 
-1. 从服务器拉代码：`git pull`
+1. 拉代码，然后**填好本机配置**（`config.js` 不入库）：
+
+   ```bash
+   cp src/config.example.js src/config.js
+   # 改 API_BASE (转发服务地址) 和 SUPABASE_URL / ANON_KEY
+   ```
+
 2. 打开 **BlueOS Studio** → 新建工程
    - 应用名称：`健身计划`
    - 包名：`com.fzg.fitness`（要与 `manifest.json` 一致）
-3. 用本目录的 `src/` 覆盖新工程的 `src/`
+3. 用本目录的 `src/` 覆盖新工程的 `src/`（含你刚填好的 `config.js`）
 4. 点「安装依赖」→「重新启动编译」
 5. 右侧模拟器实时预览，用 DevTools 面板看日志和网络
 6. 菜单「打包」→ 选 release → 生成签名 → 输出 `dist/*.rpk`

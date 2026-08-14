@@ -1,225 +1,69 @@
-# 部署与测试备忘（浙大实验室服务器 node01）
+# 部署指南
 
-## 环境事实
+三条路：**Vercel**（推荐）、**自托管**、**手表转发服务**。
+数据库都在 Supabase，跑在哪里只影响页面渲染那一层。
 
-| 项 | 值 |
-|---|---|
-| 主机 | node01，RHEL 8.5，glibc 2.28 |
-| 内网 IP | `10.39.15.143`（ens13f0，DHCP 动态，可能变） |
-| Node | v22.18.0（nvm） |
-| 项目路径 | `/datb/home/zhangfang/Project/00_OLD_DOCS/fzg_proj/ai-fitness/ai-fitness-tracker` |
-| 防火墙 | firewalld 未启用，端口默认可达 |
-| 外网 | 直连可达 supabase.co / api.deepseek.com，**不需要代理** |
+---
 
-## 平台适配（已处理）
+## 一、先把 Supabase 弄好（必须）
 
-Next.js 16 的原生 SWC 二进制要求 `GLIBC_2.29`，本机只有 2.28，
-所以 **Turbopack 跑不起来**，必须走 webpack。已固化进 `package.json`：
+### 1. 建表
 
-```json
-"dev":   "next dev --webpack -H 0.0.0.0 -p 3000",
-"build": "next build --webpack",
-"start": "next start -H 0.0.0.0 -p 3000"
-```
-
-启动时会打印两行 `Attempted to load @next/swc-linux-x64-gnu ... GLIBC_2.29 not found`
-警告——**这是预期的**，Next 会自动回退到 WASM 版 SWC，不影响功能，只是构建慢一些。
-
-> 解压出来的 `node_modules` 已损坏（zip 把 npm 的符号链接压平成普通文件，
-> 相对 `require` 全断），已删除并用 `npm ci` 重装。以后别从 zip 里带 node_modules。
-
-## Node 来源（注册表未覆盖）
-
-`registryctl resolve node/npm/npx` 全部返回「未在注册表中找到」——注册表只扫
-`/data/software/miniconda3`、`/data/software/miniforge3_zf`、`/data/software/*`，
-这三处都没有 node。全机唯一的 Node 是 nvm 装的：
-
-```
-/datb/home/zhangfang/.nvm/versions/node/v22.18.0/bin/{node,npm,npx}   # v22.18.0
-```
-
-**坑：`npm` 的 shebang 是 `#!/usr/bin/env node`**，所以即使写 npm 的绝对路径，
-只要 PATH 里没有 node 一样会报 `env: 'node': No such file or directory`。
-nvm 是靠 `~/.bashrc` 注入 PATH 的，**cron / systemd / 非登录 shell 里都没有**。
-写自启脚本时必须显式加 PATH：
-
-```bash
-export PATH=/datb/home/zhangfang/.nvm/versions/node/v22.18.0/bin:$PATH
-```
-
-## 启动
-
-```bash
-cd /datb/home/zhangfang/Project/00_OLD_DOCS/fzg_proj/ai-fitness/ai-fitness-tracker
-export PATH=/datb/home/zhangfang/.nvm/versions/node/v22.18.0/bin:$PATH
-npm run build          # 首次 / 改代码后
-nohup npm run start > /tmp/fitness.log 2>&1 &
-```
-
-停止：`pkill -f "next start"`
-
-本机自测时注意：shell 里设了 `http_proxy`，curl 访问 localhost 会被代理拦成 502，
-加 `--noproxy '*'`：
-
-```bash
-curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/login
-```
-
-## 端到端验证记录（2026-08-13，已全部通过）
-
-用真实注册的测试账号跑通全链路，测试数据已删除：
-
-| 检查项 | 结果 |
-|---|---|
-| Publishable key 有效 | ✅ |
-| 5 张表 + 2 个视图已建 | ✅ profiles / daily_metrics / meal_logs / workout_logs / ai_analyses / v_daily_nutrition / v_exercise_pr |
-| `mailer_autoconfirm` | ✅ True（注册即返回 session，不需邮件确认）|
-| `handle_new_user` 触发器 | ✅ 注册后 profiles 自动建档 |
-| RLS 正向（写自己的行）| ✅ 201 |
-| RLS 反向（伪造他人 user_id）| ✅ 403 `new row violates row-level security policy` |
-| `v_exercise_pr` Epley 1RM | ✅ 80kg×8 → 101.33，等于 80×(1+8/30) |
-| 应用 `/login` / 路由保护 | ✅ 200 / 307 |
-| DeepSeek 分析调用 | ✅ 4.7–6.6s |
-
-**待办**：控制台删掉测试账号 `claude-e2e-test@example.com`
-（Authentication → Users），删用户会级联删掉它的 profiles 行。
-
-## 仍需手动配置（阻塞项）
-
-### 1. Supabase anon key（必须）
-
-`.env.local` 里 `NEXT_PUBLIC_SUPABASE_ANON_KEY=待填-anon-key` 还是占位符，
-REST 探测返回 401。去控制台取：
-
-<https://supabase.com/dashboard/project/brizffqttkhuktpqlcie/settings/api>
-
-复制 `anon public`（新版界面可能叫 Publishable key，`sb_publishable_...` 开头），
-填回 `.env.local`，然后重新 `npm run build && npm run start`。
-
-### 2. 建表（必须）
-
-Supabase 控制台 → SQL Editor → 按编号依次粘贴执行 `supabase/migrations/` 下的
-所有 `.sql`（都写成可重复执行，重跑无副作用）：
+控制台 → **SQL Editor** → 按编号依次粘贴执行 `supabase/migrations/` 下的所有 `.sql`。
+每个文件都写成可重复执行，重跑无副作用。
 
 | 迁移 | 作用 |
 |---|---|
 | `0001_init_schema.sql` | 建表 + RLS + 触发器 + 视图 |
 | `0002_workout_plans.sql` | 训练计划模板 |
-| `0003_meal_all_day.sql` | 全天饮食 |
+| `0003_meal_all_day.sql` | 饮食支持「全天」餐次 |
 | `0004_watch_pairing.sql` | 手表配对与数据接口 |
 | `0005_watch_max_weight.sql` | 手表预填改用历史最大重量 |
 | `0006_watch_week_cache.sql` | 手表整周计划 + 版本号增量校验（手表 v1.2.0 起需要）|
 
-### 3. Auth 设置（必须）
+只用网页端的话，`0004`~`0006` 可以不执行。
 
-- **Authentication → Providers → Email → 关闭 Confirm email**
-  否则注册要点邮件里的确认链接，而链接会指向内网 IP，手机邮箱客户端多半打不开。
-- **Authentication → URL Configuration → Site URL** 填 `http://10.39.15.143:3000`
+### 2. 取 key
 
-### 4. 注册完自己的账号后立刻关闭公开注册（安全，重要）
+**Settings → API** → `Project URL` + `anon public`
+（新版界面叫 Publishable key，`sb_publishable_...` 开头），填进 `.env.local`。
+
+### 3. Auth 设置
+
+- **Authentication → Providers → Email**：自用建议**关掉 Confirm email**。
+  开着的话注册要点邮件里的确认链接，而链接会指向部署地址，内网地址在手机邮箱里多半打不开。
+- **Authentication → URL Configuration → Site URL**：填最终访问地址；
+  Redirect URLs 加上 `<你的地址>/auth/callback`。否则邮箱确认 / 密码重置会跳到错误地址。
+
+### 4. ⚠️ 注册完自己的账号后立刻关掉公开注册
 
 **Authentication → Sign In / Providers → 关闭 "Allow new users to sign up"**
 
-原因：服务跑在 3000 端口且无额外鉴权，浙大内网任何人扫到这台机器都能打开注册页、
-建账号、然后用饮食记录功能消耗你的 DeepSeek 额度。RLS 只保证「别人看不到你的数据」，
-挡不住「别人注册自己的账号烧你的 key」。
-
-## 密钥暴露面
-
-- `AI_API_KEY`（DeepSeek）：只在 server actions 里用，已确认不会进客户端 bundle。安全。
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`：设计上就是公开的，会出现在浏览器里，
-  靠数据库 RLS 保护。迁移 SQL 里五张表全开了 RLS 且策略是 `user_id = auth.uid()`，正确。
-- `.env.local` 被 `.gitignore` 覆盖（`.env*`），不会进 git。
-
-## 数据实际存在哪
-
-**不在这台服务器上。** 表和用户数据都在 Supabase 云（境外），
-AI 推理在 DeepSeek 云。这台服务器只负责渲染页面和转发 API 调用。
-所以「部署在实验室服务器」并不等于「数据留在内网」。
-
-## 手机访问（服务器方案，仅作临时测试）
-
-手机 aTrust 连浙大 VPN → 浏览器打开 `http://10.39.15.143:3000`
-
-注意 IP 是 DHCP 动态分配的，服务器重启后可能变，届时用 `ip -4 addr show ens13f0` 重新确认。
+应用本身没有额外鉴权，任何人扫到你的地址都能注册账号，然后用饮食记录功能
+**烧你的 AI key**。RLS 只保证「别人看不到你的数据」，挡不住「别人注册自己的账号花你的钱」。
 
 ---
 
-# 正式方案：部署到 Vercel
+## 二、部署到 Vercel（推荐）
 
-项目本来就是奔着 Vercel 设计的（README 技术栈那行、`.gitignore` 里的 `.vercel`）。
+项目本来就是奔着 Vercel 设计的。
 
-## 网络前提（已实测）
+### 走 GitHub
 
-| 目标 | 直连 | 代理 |
-|---|---|---|
-| vercel.com / api.vercel.com | ✅ 200 / 308 | — |
-| registry.npmjs.org | ✅ 200 | — |
-| supabase.co / api.deepseek.com | ✅ | — |
-| **github.com / api.github.com** | ❌ 超时 | ❌ 超时 |
+1. 推到 GitHub
+2. 在 [Vercel](https://vercel.com) 导入该仓库
+3. **Settings → Environment Variables** 填入与 `.env.local` 相同的 5 个变量
+4. Deploy
 
-**GitHub 从这台服务器完全不通**（`127.0.0.1:10809` 端口在监听，但上游是死的，
-连 google.com 都失败）。所以 README 里「推送到 GitHub → Vercel 导入仓库」那条路走不通。
-
-**改用 Vercel CLI 直传**，不经过 GitHub。CLI 已全局安装：`vercel 58.11.0`。
-
-## 超时配置（已处理）
-
-实测 DeepSeek 分析 7 天数据耗时 **5.0 / 6.6 / 4.7 秒**（prompt 1880 tok，completion ~600 tok）。
-而 `runAnalysis` 允许区间到 90 天，耗时会显著上升。已按 Next 官方文档
-（Server Action 的超时设在所在 page）声明：
-
-| 位置 | maxDuration | 原因 |
-|---|---|---|
-| `app/(dashboard)/analysis/page.tsx` | 60s | AI 综合分析，Hobby 上限 |
-| `app/(dashboard)/meals/page.tsx` | 30s | 提交饮食时同步估算营养 |
-| `app/api/export/route.ts` | 30s | exceljs 内存生成工作簿 |
-
-## 已上线
-
-**<https://ai-fitness-tracker-fzg002s-projects.vercel.app>**（2026-08-13）
-
-- Vercel scope `fzg002s-projects`，项目 `ai-fitness-tracker`
-- 15 个环境变量已写入 production / preview / development
-- 函数实跑在 `hnd1`（东京），响应头 `x-vercel-id: hnd1::...` 实测确认。
-  项目设置里的默认区域是 `iad1`，被 `vercel.json` 覆盖了
-- Vercel 默认开启的 Deployment Protection **已关闭**——开着的话所有 `.vercel.app`
-  地址都会 302 跳 Vercel 登录页，手机上用不了
-
-以后改完代码重新部署：
+### 或者 CLI 直传（GitHub 不通时）
 
 ```bash
-cd /datb/home/zhangfang/Project/00_OLD_DOCS/fzg_proj/ai-fitness/ai-fitness-tracker
-export PATH=/datb/home/zhangfang/.nvm/versions/node/v22.18.0/bin:$PATH
-vercel --prod
+npm i -g vercel
+vercel                # 首次: 交互式创建项目, 一路默认
+vercel --prod         # 正式部署
 ```
 
-> 注意：这台服务器上的代码是**唯一一份**，GitHub 不可达所以没有远程备份。
-> 建议找机会在能上 GitHub 的机器上推一个私有仓库。
-
-## 部署步骤（首次，留作参考）
-
-### 1. 登录（二选一）
-
-在 Claude Code 里用 `!` 前缀跑交互式登录，输出会回到会话里：
-
-```
-! vercel login
-```
-
-或者去 <https://vercel.com/account/tokens> 建一个 token，然后所有命令加 `--token=xxx`。
-
-### 2. 首次部署（预览环境）
-
-```bash
-cd /datb/home/zhangfang/Project/00_OLD_DOCS/fzg_proj/ai-fitness/ai-fitness-tracker
-export PATH=/datb/home/zhangfang/.nvm/versions/node/v22.18.0/bin:$PATH
-vercel            # 交互式创建项目, 一路默认即可
-```
-
-`.env.local` 被 `.gitignore` 覆盖，**不会上传**，环境变量要单独设。
-
-### 3. 设置环境变量
+`.env.local` 被 `.gitignore` 覆盖不会上传，环境变量要单独设：
 
 ```bash
 for e in production preview development; do
@@ -231,25 +75,112 @@ for e in production preview development; do
 done
 ```
 
-值取自 `.env.local`。也可以在网页控制台 Settings → Environment Variables 批量粘贴。
+### 两个容易踩的点
 
-### 4. 正式部署
+- **Deployment Protection 默认是开的**，开着的话所有 `.vercel.app` 地址都会 302 跳
+  Vercel 登录页，手机上直接用不了。自用记得关掉。
+- **函数区域**：默认 `iad1`（美东）。国内访问建议在 `vercel.json` 里改成 `hnd1`（东京），
+  往返能省一大截。
+
+### 超时配置（已按 Next 官方文档设好）
+
+AI 调用比普通请求慢得多，Server Action 的超时设在它所在的 page 上：
+
+| 位置 | maxDuration | 原因 |
+|---|---|---|
+| `app/(dashboard)/analysis/page.tsx` | 60s | AI 综合分析，Hobby 计划上限 |
+| `app/(dashboard)/meals/page.tsx` | 30s | 提交饮食时同步估算营养 |
+| `app/api/export/route.ts` | 30s | exceljs 在内存里生成工作簿 |
+
+> 实测 DeepSeek 分析 7 天数据约 5~7 秒（prompt ~1900 tok）。允许区间到 90 天时耗时会明显上升。
+
+---
+
+## 三、自托管（自己的服务器 / NAS）
 
 ```bash
-vercel --prod
+npm ci
+npm run build
+npm run start          # 默认 -H 0.0.0.0 -p 3000
 ```
 
-### 5. 回填 Supabase 回调地址
+后台常驻：
 
-拿到 Vercel 域名后，去 Supabase → **Authentication → URL Configuration**：
-- Site URL 改成 `https://<你的项目>.vercel.app`
-- Redirect URLs 加上 `https://<你的项目>.vercel.app/auth/callback`
+```bash
+nohup npm run start > /tmp/fitness.log 2>&1 &
+# 停止
+pkill -f "next start"
+```
 
-否则邮箱确认 / 密码重置的链接会跳回错误地址。
+### 老发行版要注意 glibc
 
-## 已知风险
+Next.js 16 的原生 SWC 二进制需要 `GLIBC_2.29`。CentOS/RHEL 8 只有 2.28，
+**Turbopack 跑不起来**，必须走 webpack。本仓库的 `package.json` 已经固定成 webpack：
 
-- `vercel.app` 域名在国内访问不稳定，手机可能需要偶尔重试。有自己的域名可以在
-  Vercel 绑定 Custom Domain 缓解。
-- Vercel 构建机 glibc 是新的，本可以用 Turbopack；但 `build` 脚本统一留了 `--webpack`，
-  两边行为一致、可复现，代价只是构建慢几十秒。
+```json
+"dev":   "next dev --webpack -H 0.0.0.0 -p 3000",
+"build": "next build --webpack",
+"start": "next start -H 0.0.0.0 -p 3000"
+```
+
+启动时会打印两行 `Attempted to load @next/swc-linux-x64-gnu ... GLIBC_2.29 not found`
+——**这是预期的**，Next 会自动回退到 WASM 版 SWC，功能不受影响，只是构建慢一些。
+glibc 够新的机器可以把 `--webpack` 去掉换回 Turbopack。
+
+### 用 nvm 装的 Node 要显式给 PATH
+
+`npm` 的 shebang 是 `#!/usr/bin/env node`，所以即使写 npm 的绝对路径，
+PATH 里没有 node 一样会报 `env: 'node': No such file or directory`。
+nvm 靠 `~/.bashrc` 注入 PATH，**cron / systemd / 非登录 shell 里都没有**，自启脚本里要写死：
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.18.0/bin:$PATH"
+```
+
+### 本机自测
+
+shell 里设了 `http_proxy` 的话，curl 访问 localhost 会被代理拦成 502，加 `--noproxy '*'`：
+
+```bash
+curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/login
+```
+
+---
+
+## 四、手表转发服务
+
+只在用手表端时才需要。蓝河快应用的 fetch 通道**发不出 HTTPS**，而 Supabase 强制 https，
+所以中间必须有一跳明文 HTTP 的转发。完整说明（含幂等与连接复用的设计理由）见
+[`watch/proxy/README.md`](watch/proxy/README.md)。
+
+```bash
+cp watch/src/config.example.js watch/src/config.js   # 填 SUPABASE_URL / ANON_KEY
+python3 watch/proxy/server.py                         # 或 node watch/proxy/server.js
+curl http://<本机IP>:8080/health                       # {"ok":true,...}
+```
+
+上游地址取自 `watch/src/config.js`，也可以用环境变量覆盖：
+`SUPABASE_URL=https://xxx.supabase.co python3 server.py`。
+
+手表走蓝牙经手机上网，**只有当手机与转发服务在同一网络时才连得上**。
+连不上也不影响用：整周计划有离线缓存，记录进本地队列，回到网络内自动补传。
+
+---
+
+## 密钥暴露面
+
+| 变量 | 会不会进浏览器 | 说明 |
+|---|---|---|
+| `AI_API_KEY` | ❌ 不会 | 只在 Server Actions 里用 |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ 会 | 设计上就是公开的，靠 RLS 保护 |
+| 手表里的 ANON_KEY | ✅ 打进 rpk | 同上；手表的真正凭据是配对后拿到的 device token |
+| `.env.local` | — | 被 `.gitignore` 的 `.env*` 覆盖，不会进 git |
+
+五张表全开了 RLS，策略是 `user_id = auth.uid()`；手表侧接口全部走
+`security definer` 函数，不直连表，不需要把 `service_role` key 发到手表上。
+
+## 数据实际存在哪
+
+**不在你的服务器上。** 表和用户数据都在 Supabase 云，AI 推理在模型服务商那边。
+自托管的那台机器只负责渲染页面和转发 API 调用——「部署在自己服务器」
+不等于「数据留在本地」。介意的话可以自建 Supabase（官方支持 self-host）。

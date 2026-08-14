@@ -53,15 +53,36 @@
 import http.client
 import json
 import os
+import re
 import ssl
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("PORT", "8080"))
-SUPABASE_URL = os.environ.get(
-    "SUPABASE_URL", "https://brizffqttkhuktpqlcie.supabase.co"
-).rstrip("/")
+
+
+def _resolve_supabase_url():
+    """
+    上游地址: 环境变量优先; 没给就读隔壁手表源码的 config.js ——
+    本服务通常就跑在仓库里, 让它和手表端共用同一个事实来源, 少一处要改的地方。
+    """
+    v = os.environ.get("SUPABASE_URL")
+    if v:
+        return v.rstrip("/")
+    cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "config.js")
+    try:
+        with open(cfg, encoding="utf-8") as f:
+            m = re.search(r"SUPABASE_URL:\s*['\"]([^'\"]+)['\"]", f.read())
+            if m:
+                return m.group(1).rstrip("/")
+    except OSError:
+        pass
+    return ""
+
+
+SUPABASE_URL = _resolve_supabase_url()
 UPSTREAM_HOST = SUPABASE_URL.split("://", 1)[-1]
 
 # 只允许这几个 RPC —— 与手表端用到的完全一致
@@ -378,6 +399,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    if not SUPABASE_URL:
+        log("ERROR", "没有上游地址, 无法启动")
+        print(
+            "\n请二选一:\n"
+            "  1) 填好 watch/src/config.js 的 SUPABASE_URL "
+            "(从 config.example.js 复制)\n"
+            "  2) 启动时给环境变量: "
+            "SUPABASE_URL=https://<project-ref>.supabase.co python3 server.py\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     threading.Thread(target=_warm_loop, daemon=True).start()
     log("INFO", "转发服务已启动", port=PORT, upstream=UPSTREAM_HOST, rpc=len(ALLOWED_RPC))

@@ -1,13 +1,14 @@
 /**
- * 应用配置
+ * 应用配置 —— 复制本文件为 config.js 再填自己的值
  *
- * 手表直连 Supabase 的 RPC 接口, 不经过 Vercel:
+ *     cp src/config.example.js src/config.js
+ *
+ * config.js 已在 .gitignore 里, 不会被提交。
+ *
+ * 手表不走 Vercel, 而是打自建的 HTTP 转发服务, 再由它转给 Supabase:
  *   1. 少一跳, 延迟更低
  *   2. 绕开 vercel.app 域名在国内不稳定的问题
- *
- * ANON_KEY 是 Supabase 的「公开密钥」, 本来就会打进网页前端的 bundle,
- * 写在这里不会带来额外风险 —— 所有数据表都开了 RLS, 单靠这个 key 查不到
- * 任何人的数据。手表的真正凭据是配对后拿到的 device token。
+ *   3. 蓝河快应用的 fetch 通道发不出 HTTPS —— 这一跳是硬性需要, 见 proxy/README.md
  */
 export const CONFIG = {
   // ===========================================================================
@@ -21,14 +22,19 @@ export const CONFIG = {
   // 三个不同域名的 https 全挂而 http 正常，排除域名/时间/网络因素 ——
   // 蓝河快应用的 fetch 通道发不出 HTTPS。另两个开源蓝河应用同样只用 http。
   //
-  // 因此改由 proxy/server.js 中转: 手表 --http--> 转发服务 --https--> Supabase。
-  // 部署好服务器后，把下面这行换成你的 `http://IP:端口`，其余代码无需改动。
+  // 因此改由 proxy/ 下的转发服务中转: 手表 --http--> 转发服务 --https--> Supabase。
+  // 把下面这行换成转发服务的 `http://IP:端口`，其余代码无需改动。
   // ===========================================================================
-  API_BASE: 'http://10.39.15.143:8080',
+  API_BASE: 'http://192.168.1.100:8080',
 
-  // 下面两项供网络自检对照用; ANON_KEY 会由手表透传给转发服务
-  SUPABASE_URL: 'https://brizffqttkhuktpqlcie.supabase.co',
-  ANON_KEY: 'sb_publishable_KLWOTYIG6jQ24V4oOBSx_w_OeDQsv11',
+  // 下面两项供网络自检对照用; ANON_KEY 会由手表透传给转发服务。
+  //
+  // ANON_KEY 是 Supabase 的「公开密钥」(新版界面叫 Publishable key)，
+  // 本来就会打进网页前端的 bundle，写在这里不会带来额外风险 ——
+  // 所有数据表都开了 RLS，单靠这个 key 查不到任何人的数据。
+  // 手表的真正凭据是配对后拿到的 device token。
+  SUPABASE_URL: 'https://your-project-ref.supabase.co',
+  ANON_KEY: 'your-publishable-or-anon-key',
 
   // 网络: 手表走手机蓝牙代理, 比手机直连慢, 超时给宽松些
   TIMEOUT: 15000,

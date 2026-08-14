@@ -47,3 +47,11 @@ watch/sign/
 # Python 缓存 (watch/proxy 的转发服务)
 __pycache__/
 *.pyc
+
+# 手表端本机配置 (转发服务地址 / Supabase 项目地址与 key)
+# 从 watch/src/config.example.js 复制一份填自己的值
+watch/src/config.js
+
+# 私人资料 (机器路径、内网 IP、脱敏对照表、重写前的中文提交历史)
+# 这个目录整个不入库, 详见 private/README.md
+/private/

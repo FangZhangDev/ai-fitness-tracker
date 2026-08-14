@@ -47,11 +47,33 @@
 
 const http = require('http')
 const https = require('https')
+const fs = require('fs')
+const path = require('path')
 const { URL } = require('url')
 
 const PORT = parseInt(process.env.PORT || '8080', 10)
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || 'https://brizffqttkhuktpqlcie.supabase.co'
+
+/**
+ * 上游地址: 环境变量优先; 没给就读隔壁手表源码的 config.js ——
+ * 本服务通常就跑在仓库里, 让它和手表端共用同一个事实来源, 少一处要改的地方。
+ */
+function resolveSupabaseUrl() {
+  if (process.env.SUPABASE_URL) return process.env.SUPABASE_URL.replace(/\/+$/, '')
+  try {
+    const cfg = fs.readFileSync(path.join(__dirname, '..', 'src', 'config.js'), 'utf8')
+    const m = /SUPABASE_URL:\s*['"]([^'"]+)['"]/.exec(cfg)
+    if (m) return m[1].replace(/\/+$/, '')
+  } catch (e) {}
+  return ''
+}
+
+const SUPABASE_URL = resolveSupabaseUrl()
+if (!SUPABASE_URL) {
+  console.error('没有上游地址, 无法启动。请二选一:')
+  console.error('  1) 填好 watch/src/config.js 的 SUPABASE_URL (从 config.example.js 复制)')
+  console.error('  2) 启动时给环境变量: SUPABASE_URL=https://<project-ref>.supabase.co node server.js')
+  process.exit(1)
+}
 
 /** 只允许这几个 RPC —— 与手表端用到的完全一致 */
 const ALLOWED_RPC = [

@@ -123,7 +123,7 @@ launchctl load ~/Library/LaunchAgents/com.fzg.watchproxy.plist
 | 内存 | 30MB 以内（零第三方依赖） |
 | CPU | 几乎为 0 |
 | 流量 | 每天几十 KB |
-| 系统 | 任意 Linux + Node.js 14+ |
+| 系统 | 任意 Linux + Node.js 14+，或任意带 python3 的系统 |
 
 最低配的云服务器足够。**关键：用非 80/443 端口**（如 8080），国内服务器可免 ICP 备案。
 
@@ -140,7 +140,7 @@ PORT=8080 python3 server.py  # Python 版
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `PORT` | `8080` | 监听端口，避开 80/443 |
-| `SUPABASE_URL` | 项目的 Supabase 地址 | 上游地址 |
+| `SUPABASE_URL` | 读 `../src/config.js` | 上游地址；单机部署时用它指定 |
 
 ### 常驻运行
 
@@ -173,23 +173,34 @@ curl http://你的IP:8080/health
 # {"ok":true,"upstream":"xxx.supabase.co"}
 ```
 
-## 配置手表端（两种方案都一样）
+## 配置
 
-改 `watch/src/config.js` 一行，然后重新打包：
+手表端和转发服务共用 `watch/src/config.js`（不入库，从 `config.example.js` 复制）：
 
-```js
-API_BASE: 'http://你的IP:8080',
+```bash
+cp watch/src/config.example.js watch/src/config.js
 ```
 
-其余代码无需改动。装好后长按配对页标题跑自检，应看到 `proxy:200`。
+```js
+API_BASE:     'http://你的IP:8080',                    // 手表打这个地址
+SUPABASE_URL: 'https://your-project-ref.supabase.co',  // 转发服务也读这一项
+ANON_KEY:     'sb_publishable_...',
+```
+
+改完重新打包手表应用即可，其余代码无需改动。
+装好后长按配对页标题跑自检，应看到 `proxy:200`。
+
+> 转发服务的上游地址解析顺序：环境变量 `SUPABASE_URL` → 隔壁 `../src/config.js` → 报错退出。
+> 单独把 `server.py` 拷到别的机器跑时，用环境变量给：
+> `SUPABASE_URL=https://xxx.supabase.co python3 server.py`
 
 ## 安全设计
 
 这不是开放代理，别人拿到地址也做不了坏事：
 
 - **路径白名单**：只接受 `POST /rest/v1/rpc/<fn>`，且 `<fn>` 必须是
-  `watch_redeem_pairing_code` / `watch_get_today` / `watch_submit_logs` 三者之一。
-  其它 RPC 返回 403，直接查表返回 404
+  `watch_redeem_pairing_code` / `watch_get_week` / `watch_get_today` /
+  `watch_submit_logs` 四者之一。其它 RPC 返回 403，直接查表返回 404
 - **不持有密钥**：`apikey` 由手表带上来原样透传，本服务不存储、不打印
 - **请求体上限** 256KB
 - 上游地址写死，不接受客户端指定目标
