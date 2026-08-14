@@ -13,14 +13,18 @@
     <!-- 动作名 -->
     <text class="ex-name">{{ exercise }}</text>
 
-    <!-- 当前调节的数值: 一屏里最大的元素, 转表冠时只有它在变 -->
+    <!--
+      当前调节的数值: 一屏里最大的元素, 转表冠时只有它在变。
+      上下用两条细横线代替 ▲▼ —— 那类几何符号手表字体未必收录, 缺字会显示成方块;
+      横线用 CSS 画, 一定渲染正确, 同样能暗示「这个值可上下调」。
+    -->
     <div class="value-wrap">
-      <text class="arrow">▲</text>
+      <div class="tick"></div>
       <div class="value-row">
         <text class="value">{{ displayValue }}</text>
         <text class="unit">{{ displayUnit }}</text>
       </div>
-      <text class="arrow">▼</text>
+      <div class="tick"></div>
     </div>
 
     <!-- 字段切换: 点哪个就调哪个 -->
@@ -215,9 +219,12 @@
     margin-top: 6px;
     height: 150px;
   }
-  .arrow {
-    font-size: 20px;
-    color: #48484a;
+  /* 用 CSS 横线代替 ▲▼ 字符, 不依赖字体收录几何符号 */
+  .tick {
+    width: 40px;
+    height: 3px;
+    border-radius: 2px;
+    background-color: #48484a;
   }
   .value-row {
     flex-direction: row;

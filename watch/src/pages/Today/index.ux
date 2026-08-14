@@ -30,22 +30,23 @@
 
     <!-- ============ 今日计划 ============ -->
     <div else class="wrap">
-      <!-- 顶部: 训练日 + 进度. 长按可切换训练日 -->
+      <!--
+        顶部只留训练日名称, 进度交给下面那条绿条表达 —— 圆屏上少一个数字
+        就能给标题让出整整一行宽度。长按可切换训练日。
+
+        标题过长时用 marquee 滚动完整显示; 够短就用普通 text, 免得没必要地动。
+        scrollamount 是每秒滚动的像素数, 18 大约每秒半个汉字, 够从容看清。
+        loop=3 滚三遍即停, 不持续占帧率; 两端阴影默认开且为黑色, 与背景融合。
+      -->
       <div class="header" onlongpress="openPickDay">
-        <!--
-          标题过长时用 marquee 滚动完整显示; 够短就用普通 text, 免得没必要地动。
-          loop=3 滚三遍即停, 不持续占帧率; 两端阴影默认开且为黑色, 正好与背景融合。
-          进度不滚动, 始终固定在右侧。
-        -->
         <marquee
           if="{{ titleScroll }}"
           class="head-title-mq"
-          scrollamount="40"
+          scrollamount="18"
           loop="3"
-          text-offset="60"
+          text-offset="80"
         >{{ title }}</marquee>
         <text else class="head-title">{{ title }}</text>
-        <text class="head-count">{{ doneCount }}/{{ totalCount }}</text>
       </div>
       <!-- 进度条: 唯一的强调色, 一眼看出还剩几个 -->
       <div class="bar-bg">
@@ -65,8 +66,12 @@
       <!-- 动作列表 -->
       <list else class="list" id="exlist">
         <list-item type="ex" class="item" for="{{ exercises }}" onclick="openRecord($idx)">
+          <!--
+            用 CSS 画圆而不是打 ✓ / ○ 字符 —— 手表的精简字体不一定收录这些符号,
+            缺字时会渲染成方块。未完成=灰色空心圈, 已完成=强调色实心圆。
+          -->
           <div class="dot-wrap">
-            <text class="dot {{ $item.done ? 'dot-on' : '' }}">{{ $item.done ? '✓' : '○' }}</text>
+            <div class="dot {{ $item.done ? 'dot-on' : '' }}"></div>
           </div>
           <div class="item-body">
             <text class="item-name {{ $item.done ? 'item-name-done' : '' }}">{{ $item.exercise }}</text>
@@ -213,8 +218,8 @@
         }
 
         this.title = payload.title || '今天'
-        // 标题区可用约 300px(466 减去进度与边距), 32px 字号约容 9 个汉字
-        this.titleScroll = this.title.length > 9
+        // 去掉进度数字后标题独占 386px, 32px 字号约容 12 个汉字
+        this.titleScroll = this.title.length > 12
         this.doneCount = payload.done_count || 0
         this.totalCount = payload.total_count || 0
         this.exercises = list
@@ -376,11 +381,6 @@
     font-size: 32px;
     color: #ffffff;
   }
-  .head-count {
-    font-size: 28px;
-    color: #00e5a0;
-    margin-left: 12px;
-  }
 
   .bar-bg {
     width: 386px;
@@ -428,12 +428,18 @@
     align-items: center;
     justify-content: center;
   }
+  /* CSS 画的圆点, 不依赖字体是否收录 ✓ / ○ */
   .dot {
-    font-size: 30px;
-    color: #48484a;
+    width: 26px;
+    height: 26px;
+    border-radius: 13px;
+    border-width: 2px;
+    border-color: #48484a;
+    background-color: #000000;
   }
   .dot-on {
-    color: #00e5a0;
+    border-color: #00e5a0;
+    background-color: #00e5a0;
   }
   .item-body {
     flex-direction: column;
