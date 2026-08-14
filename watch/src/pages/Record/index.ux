@@ -102,11 +102,11 @@
     },
 
     onShow() {
-      screen.keepOn(true)
+      screen.awake()
     },
 
     onHide() {
-      screen.keepOn(false)
+      screen.release()
     },
 
     onReady() {
@@ -145,6 +145,8 @@
      * 记录页的初值本来就预填成历史最大重量, 只需小幅微调, 不需要加速档。
      */
     onRotation(e) {
+      // 转表冠算交互, 屏幕续期; 状态没变时这里不会碰原生接口, 放心高频调
+      screen.awake()
       const dir = rotary.feed(e)
       if (!dir) return
 
@@ -163,6 +165,7 @@
     },
 
     setField(idx) {
+      screen.awake()
       this.fieldIdx = idx
       // 换了字段就清账, 免得上一个字段攒下的旋转量落到新字段上
       rotary.reset()
@@ -177,6 +180,7 @@
     },
 
     save() {
+      screen.awake()
       if (this.saving) return
       this.setSaving(true)
       const self = this

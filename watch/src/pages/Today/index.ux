@@ -7,7 +7,7 @@
         2. 若它显示了而下面各屏都空白, 即可断定是条件渲染失效, 而非白屏崩溃
       功能稳定后可删。
     -->
-    <text class="ver">v1.2.0 {{ bootInfo }}</text>
+    <text class="ver">v1.2.1 {{ bootInfo }}</text>
 
     <!-- ============ 加载中 ============ -->
     <div if="{{ isLoading }}" class="center">
@@ -185,8 +185,8 @@
 
     // 标题栏由 manifest.json 的 display.titleBar 控制, 不在代码里调
     onShow() {
-      // 训练时手一直在忙, 屏幕自动熄灭很打断节奏 —— 前台期间保持常亮
-      screen.keepOn(true)
+      // 有交互就把屏幕续 30 秒, 见 common/screen.js
+      screen.awake()
       this.bootInfo = 'show'
       // 每次回到本页都重新拉一次 —— 从记录页返回后进度要立刻更新
       this.boot()
@@ -194,7 +194,7 @@
 
     onHide() {
       // 退到后台立刻交还系统默认息屏, 不白白耗电
-      screen.keepOn(false)
+      screen.release()
     },
 
     /** 切换页面状态; 同步模板要用的布尔字段 */
@@ -331,6 +331,7 @@
     // ---------------- 交互 ----------------
 
     openRecord(idx) {
+      screen.awake()
       const e = this.exercises[idx]
       if (!e) return
       device.push('/pages/Record', {
@@ -351,6 +352,7 @@
     },
 
     openPickDay() {
+      screen.awake()
       const cur = this.weekday || sync.todayWeekday()
       const days = []
       for (let i = 1; i <= 7; i++) {
@@ -366,6 +368,7 @@
     },
 
     chooseDay(idx) {
+      screen.awake()
       const d = this.weekdays[idx]
       if (!d) return
       // 选中今天就恢复成「跟随今天」, 免得跨天后还停在旧的训练日
