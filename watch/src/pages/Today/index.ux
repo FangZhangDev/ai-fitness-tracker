@@ -7,7 +7,7 @@
         2. 若它显示了而下面各屏都空白, 即可断定是条件渲染失效, 而非白屏崩溃
       功能稳定后可删。
     -->
-    <text class="ver">v1.0.6 {{ bootInfo }}</text>
+    <text class="ver">v1.0.7 {{ bootInfo }}</text>
 
     <!-- ============ 加载中 ============ -->
     <div if="{{ isLoading }}" class="center">
@@ -98,6 +98,7 @@
   import * as sync from '../../common/sync.js'
   import * as api from '../../common/api.js'
   import * as device from '../../common/device.js'
+  import * as screen from '../../common/screen.js'
 
   const WEEK_LABEL = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
@@ -179,9 +180,16 @@
 
     // 标题栏由 manifest.json 的 display.titleBar 控制, 不在代码里调
     onShow() {
+      // 训练时手一直在忙, 屏幕自动熄灭很打断节奏 —— 前台期间保持常亮
+      screen.keepOn(true)
       this.bootInfo = 'show'
       // 每次回到本页都重新拉一次 —— 从记录页返回后进度要立刻更新
       this.boot()
+    },
+
+    onHide() {
+      // 退到后台立刻交还系统默认息屏, 不白白耗电
+      screen.keepOn(false)
     },
 
     /** 切换页面状态; 同步模板要用的布尔字段 */

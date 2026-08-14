@@ -2,8 +2,8 @@
   "package": "com.fzg.fitness",
   "name": "健身计划",
   "icon": "/assets/images/icon.png",
-  "versionName": "1.0.6",
-  "versionCode": 7,
+  "versionName": "1.0.7",
+  "versionCode": 8,
   "deviceTypeList": [
     "watch",
     "watch-square",
@@ -24,6 +24,9 @@
     },
     {
       "name": "blueos.hardware.vibrator.vibrator"
+    },
+    {
+      "name": "blueos.hardware.display.brightness"
     }
   ],
   "permissions": [],

@@ -48,6 +48,7 @@
   import * as api from '../../common/api.js'
   import * as store from '../../common/store.js'
   import * as device from '../../common/device.js'
+  import * as screen from '../../common/screen.js'
 
   const FIELDS = [
     { key: 'weight', label: '重量', unit: 'kg' },
@@ -91,6 +92,14 @@
         rir: Number(this.rir) || 0,
       }
       this.refresh()
+    },
+
+    onShow() {
+      screen.keepOn(true)
+    },
+
+    onHide() {
+      screen.keepOn(false)
     },
 
     onReady() {
