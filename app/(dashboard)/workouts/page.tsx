@@ -20,11 +20,19 @@ export default async function WorkoutsPage() {
   const weekday = todayWeekday();
 
   const [list, prs, recent, activePlan, lastLogs] = await Promise.all([
-    supabase.from("workout_logs").select("*").order("date", { ascending: false }).limit(100),
-    supabase.from("v_exercise_pr").select("*").order("exercise", { ascending: true }),
+    // 一行一组之后 100 行只够看两三次训练, 拉宽到 400 组 (约两个月)
     supabase
       .from("workout_logs")
-      .select("date,exercise,weight_kg,reps")
+      .select("*")
+      .order("date", { ascending: false })
+      .order("exercise", { ascending: true })
+      .order("set_index", { ascending: true })
+      .limit(400),
+    supabase.from("v_exercise_pr").select("*").order("exercise", { ascending: true }),
+    // 力量曲线读汇总视图: 直接画原始组会把一天的 4 组画成 4 个重叠的点
+    supabase
+      .from("v_exercise_sessions")
+      .select("date,exercise,top_weight_kg,best_1rm_kg")
       .gte("date", daysAgoISO(89))
       .order("date", { ascending: true }),
     supabase.from("workout_plans").select("id").eq("is_active", true).maybeSingle(),

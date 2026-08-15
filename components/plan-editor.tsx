@@ -203,6 +203,18 @@ function ExerciseForm({
         <Field label="休息">
           <input name="rest" defaultValue={ex?.rest ?? ""} className="input" placeholder="2-3分钟" />
         </Field>
+        {/* 手表的组间倒计时读这个数; 留空则按左边那行文字解析, 再解析不出就用 90 秒 */}
+        <Field label="休息(秒)" hint="手表组间倒计时用；留空按左边的文字自动解析">
+          <input
+            name="rest_sec"
+            type="number"
+            min={0}
+            max={3600}
+            defaultValue={ex?.rest_sec ?? ""}
+            className="input"
+            placeholder="120"
+          />
+        </Field>
         <Field label="RIR 下限">
           <input name="rir_min" type="number" min={0} max={10} defaultValue={ex?.rir_min ?? ""} className="input" />
         </Field>

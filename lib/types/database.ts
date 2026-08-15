@@ -89,27 +89,68 @@ export type MealLogUpdate = Partial<Omit<MealLog, "id" | "user_id" | "created_at
 /** 记录来源: 网页手动录入 / 手表上打勾。由 0007 迁移引入, 历史数据一律为 web */
 export type LogSource = "web" | "watch";
 
+/**
+ * 一行 = 某天某动作的第 set_index 组 (0008 起)。
+ * 原来一行代表整个动作、组数存在 sets 列里, 掉重量那组根本写不进去。
+ */
 export type WorkoutLog = {
   id: string;
   user_id: string;
   date: string;
   workout_day: string | null;
   exercise: string;
+  /** 同一天同一动作内的组号, 1 起 */
+  set_index: number;
   weight_kg: number | null;
-  sets: number | null;
   reps: number | null;
   rir: number | null;
+  /** 热身组: 不计入容量、PR 与平均 RIR */
+  is_warmup: boolean;
+  /** 这一组做完之后休息了多久 (手表计时器写入) */
+  rest_sec: number | null;
+  /** 这一组做完的时刻 (手表写入; 网页录入的历史数据为空) */
+  performed_at: string | null;
   notes: string | null;
   source: LogSource;
   created_at: string;
   updated_at: string;
 };
 
-// source 由数据库默认值 'web' 兜底, 网页写入不必显式传
-export type WorkoutLogInsert = Omit<WorkoutLog, "id" | "created_at" | "updated_at" | "source"> & {
+// source 由数据库默认值 'web' 兜底, 网页写入不必显式传;
+// is_warmup 同理 (默认 false), set_index 默认 1
+export type WorkoutLogInsert = Omit<
+  WorkoutLog,
+  "id" | "created_at" | "updated_at" | "source" | "is_warmup" | "set_index"
+> & {
   source?: LogSource;
+  is_warmup?: boolean;
+  set_index?: number;
 };
 export type WorkoutLogUpdate = Partial<Omit<WorkoutLog, "id" | "user_id" | "created_at" | "updated_at">>;
+
+/**
+ * 一次训练里某个动作的汇总 (视图 v_exercise_sessions)。
+ * 按组存下来之后, 直接画原始行会把一天的 4 组画成 4 个重叠的点,
+ * 喂给 AI 的行数也要翻好几倍, 所以聚合这一层是必要的。
+ */
+export type ExerciseSession = {
+  user_id: string;
+  date: string;
+  exercise: string;
+  workout_day: string | null;
+  /** 工作组数 (不含热身) */
+  sets: number;
+  warmup_sets: number;
+  top_weight_kg: number | null;
+  /** 这次训练最好的一组折算的 1RM (Epley) */
+  best_1rm_kg: number | null;
+  total_reps: number | null;
+  volume_kg: number | null;
+  avg_rir: number | null;
+  rest_total_sec: number | null;
+  /** 最后一个工作组比当天最重的那组轻 —— 力竭减重的信号 */
+  dropped: boolean;
+};
 
 // ---- meal_templates (见 supabase/migrations/0007) ----
 /**
@@ -218,7 +259,10 @@ export type PlanExercise = {
   rep_max: number | null;
   rir_min: number | null;
   rir_max: number | null;
+  /** 人看的自由文本, 如 "2-3分钟" */
   rest: string | null;
+  /** 手表倒计时用的秒数; 空则手表按 90 秒兜底 (0008 起) */
+  rest_sec: number | null;
   cues: string | null;
   equipment: string | null;
   sort_order: number;
@@ -353,6 +397,7 @@ export type Database = {
       v_exercise_pr: { Row: ExercisePR; Relationships: [] };
       v_daily_nutrition: { Row: DailyNutrition; Relationships: [] };
       v_exercise_last: { Row: ExerciseLast; Relationships: [] };
+      v_exercise_sessions: { Row: ExerciseSession; Relationships: [] };
     };
     Functions: {
       // 原子地切换启用中的计划, 见 0002 迁移

@@ -69,15 +69,23 @@ const DATA_DICTIONARY = `## 数据字典
 > description 是原始自由文本，补剂（肌酸、维生素等）也原样在里面；
 > 它们在营养数字上按 0 kcal 计，但在 ai_raw 的明细里会单独成一项，可据此统计补剂天数。
 
-### workout_logs 训练记录
+### workout_logs 训练记录（**一行 = 一组**）
 | 字段 | 含义 |
 | --- | --- |
 | date | 训练日期 |
 | workout_day | 训练日主题（如「上肢 A」） |
 | exercise | 动作名称 |
+| set_index | 同一天同一动作内的组号，1 起 |
 | weight_kg | 负重，口径见下方说明 |
-| sets / reps | 组数 / 每组次数 |
+| reps | 这一组做了几次 |
 | rir | Reps In Reserve，留了几次余力（0=力竭） |
+| is_warmup | 热身组；统计容量、PR 与平均 RIR 时应排除 |
+| rest_sec | 这一组做完之后休息了多久（手表计时器写入，可能为空） |
+| performed_at | 这一组做完的时刻（手表写入，网页录入的为空） |
+
+> 2026-08 之前的历史记录原本是「一行一个动作 + 组数」，迁移时按组数展开成了多行，
+> 同一动作的各组数值相同——那时候确实没有逐组的数据，不是真的每组都一样。
+> 逐日容量 sum(weight_kg × reps) 与展开前完全一致。
 
 ${WEIGHT_CONVENTION}
 

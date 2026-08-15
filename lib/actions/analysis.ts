@@ -31,9 +31,11 @@ export async function runAnalysis(prev: unknown, formData: FormData): Promise<An
       .gte("date", startStr)
       .lte("date", endStr)
       .order("date", { ascending: true }),
+    // 读汇总视图而不是原始组: 90 天的原始组能有上千行, 聚合后 token 不涨,
+    // 而 volume/avg_rir/dropped 正是判断训练质量要看的
     supabase
-      .from("workout_logs")
-      .select("date,exercise,weight_kg,sets,reps,rir")
+      .from("v_exercise_sessions")
+      .select("date,exercise,sets,top_weight_kg,total_reps,volume_kg,avg_rir,dropped")
       .gte("date", startStr)
       .lte("date", endStr)
       .order("date", { ascending: true }),

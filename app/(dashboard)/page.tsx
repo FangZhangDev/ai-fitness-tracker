@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/utils/server";
 import { daysAgoISO, todayISO, fmtDate } from "@/lib/utils/date";
-import { r1, r2, epley1rm } from "@/lib/utils/pr";
+import { r1, r2 } from "@/lib/utils/pr";
 import { Card, Stat, SectionTitle, EmptyState } from "@/components/ui";
 import WeightTrendChart from "@/components/charts/weight-trend-chart";
 
@@ -29,10 +29,12 @@ export default async function HomePage() {
         .select("date,weight_kg,body_fat_pct,waist_cm")
         .gte("date", daysAgoISO(13))
         .order("date", { ascending: true }),
+      // 读汇总视图而不是原始组: 一天一个动作一条, 既够数训练天数, 也够列近期训练
       supabase
-        .from("workout_logs")
-        .select("date,exercise,weight_kg,reps")
-        .gte("date", daysAgoISO(6)),
+        .from("v_exercise_sessions")
+        .select("date,exercise,sets,top_weight_kg,total_reps,best_1rm_kg")
+        .gte("date", daysAgoISO(6))
+        .order("date", { ascending: false }),
       supabase
         .from("ai_analyses")
         .select("*")
@@ -90,7 +92,7 @@ export default async function HomePage() {
                     <span className="text-neutral-400">{fmtDate(w.date)}</span> {w.exercise}
                   </span>
                   <span className="tabular-nums text-neutral-500">
-                    {r2(w.weight_kg)}kg × {w.reps} <span className="text-neutral-400">(1RM≈{r2(epley1rm(w.weight_kg, w.reps))})</span>
+                    {r2(w.top_weight_kg)}kg × {w.sets}组 <span className="text-neutral-400">(1RM≈{r2(w.best_1rm_kg)})</span>
                   </span>
                 </li>
               ))}

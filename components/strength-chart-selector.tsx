@@ -2,17 +2,20 @@
 
 import { useState } from "react";
 import StrengthChart from "@/components/charts/strength-chart";
-import { epley1rm } from "@/lib/utils/pr";
 import { EmptyState } from "@/components/ui";
 
-interface Log {
+/**
+ * 一次训练里某个动作的汇总 (视图 v_exercise_sessions 的子集)。
+ * 一天一个点 —— 按组存下来之后, 拿原始行画会在同一个横坐标上叠出好几个点。
+ */
+interface SessionPoint {
   date: string;
   exercise: string;
-  weight_kg: number | null;
-  reps: number | null;
+  top_weight_kg: number | null;
+  best_1rm_kg: number | null;
 }
 
-export default function StrengthChartSelector({ logs }: { logs: Log[] }) {
+export default function StrengthChartSelector({ logs }: { logs: SessionPoint[] }) {
   const exercises = Array.from(new Set(logs.map((l) => l.exercise))).sort();
   const [selected, setSelected] = useState(exercises[0] || "");
 
@@ -21,12 +24,12 @@ export default function StrengthChartSelector({ logs }: { logs: Log[] }) {
   }
 
   const points = logs
-    .filter((l) => l.exercise === selected && l.weight_kg && l.reps)
+    .filter((l) => l.exercise === selected && l.top_weight_kg !== null)
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((l) => ({
       date: l.date,
-      weight: l.weight_kg,
-      e1rm: epley1rm(l.weight_kg, l.reps),
+      weight: l.top_weight_kg,
+      e1rm: l.best_1rm_kg,
     }));
 
   return (

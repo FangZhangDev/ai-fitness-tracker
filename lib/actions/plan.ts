@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/utils/server";
 import { parsePlanText, generatePlan } from "@/lib/ai/plan";
-import type { ParsedPlan, Weekday } from "@/lib/types/database";
+import { parseRestSec } from "@/lib/utils/rest";
+import type { ParsedPlan, Weekday, WorkoutLogInsert } from "@/lib/types/database";
 
 export type ActionResult = { error?: string };
 export type ParseResult = { error?: string; plan?: ParsedPlan };
@@ -126,6 +127,9 @@ export async function savePlan(plan: ParsedPlan, name?: string): Promise<ActionR
       rir_min: e.rir_min,
       rir_max: e.rir_max,
       rest: e.rest,
+      // rest 是人看的自由文本, rest_sec 是手表倒计时用的秒数, 统一在这里派生,
+      // 与 0008 迁移回填历史用的是同一套规则
+      rest_sec: parseRestSec(e.rest),
       cues: e.cues,
       equipment: e.equipment,
       sort_order: i,
@@ -264,6 +268,8 @@ export async function updatePlanExercise(prev: unknown, formData: FormData): Pro
       rir_min: int(formData.get("rir_min")),
       rir_max: int(formData.get("rir_max")),
       rest: str(formData.get("rest")) || null,
+      // 表单里显式填了秒数就用它, 没填就从 rest 文本里解析
+      rest_sec: int(formData.get("rest_sec")) ?? parseRestSec(str(formData.get("rest"))),
       cues: str(formData.get("cues")) || null,
       equipment: str(formData.get("equipment")) || null,
     })
@@ -300,6 +306,7 @@ export async function addPlanExercise(prev: unknown, formData: FormData): Promis
     rir_min: int(formData.get("rir_min")),
     rir_max: int(formData.get("rir_max")),
     rest: str(formData.get("rest")) || null,
+    rest_sec: int(formData.get("rest_sec")) ?? parseRestSec(str(formData.get("rest"))),
     cues: str(formData.get("cues")) || null,
     equipment: str(formData.get("equipment")) || null,
     sort_order: (last?.sort_order ?? -1) + 1,
@@ -369,7 +376,15 @@ export async function updatePlanDay(prev: unknown, formData: FormData): Promise<
 }
 
 // ============================================================================
-// 从计划快速记录: 把今天计划里填了重量的动作一次性写入 workout_logs
+// 从计划快速记录: 把今天计划里填了的动作一次性写入 workout_logs
+//
+// 表单两种模式 (每个动作各自选, 见 components/today-plan-logger.tsx):
+//   整体  mode_{id} 不是 "sets" —— 填一次重量/组数/次数, 展开成 N 组相同数据
+//   逐组  mode_{id} === "sets"  —— 每组各填各的, 掉重量那组才记得下来
+//
+// 写入用 upsert 而不是 insert: 一天里可能先在手表上记了两组, 回头又在网页保存,
+// 旧代码那样直接 insert 会插出重复行 (按组之后更会直接撞 unique)。
+// 同一动作若原来记了更多组, 多出来的尾巴一并删掉, 保证"保存后就是屏幕上这些组"。
 // ============================================================================
 
 export async function logFromPlan(prev: unknown, formData: FormData): Promise<ActionResult & { saved?: number }> {
@@ -378,31 +393,78 @@ export async function logFromPlan(prev: unknown, formData: FormData): Promise<Ac
   const workoutDay = str(formData.get("workout_day")) || null;
   if (!date) return { error: "缺少日期" };
 
-  // 表单里每个动作一组字段, 用 ids[] 串起来
   const ids = formData.getAll("ids").map((v) => v.toString());
-  const rows = ids
-    .map((id) => ({
-      user_id: userId,
-      date,
-      workout_day: workoutDay,
-      exercise: str(formData.get(`exercise_${id}`)),
-      weight_kg: num(formData.get(`weight_${id}`)),
-      sets: int(formData.get(`sets_${id}`)),
-      reps: int(formData.get(`reps_${id}`)),
-      rir: int(formData.get(`rir_${id}`)),
-      notes: null,
-    }))
-    // 只保存真正练了的: 有动作名, 且重量/组数/次数至少填了一项
-    .filter(
-      (r) =>
-        r.exercise &&
-        (r.weight_kg !== null || r.sets !== null || r.reps !== null),
-    );
+  const rows: WorkoutLogInsert[] = [];
+  // 每个动作实际写了几组, 用来把多余的旧组裁掉
+  const setCountByExercise = new Map<string, number>();
+
+  for (const id of ids) {
+    const exercise = str(formData.get(`exercise_${id}`));
+    if (!exercise) continue;
+
+    const base = { user_id: userId, date, workout_day: workoutDay, exercise, notes: null };
+    const before = rows.length;
+
+    if (str(formData.get(`mode_${id}`)) === "sets") {
+      const n = int(formData.get(`setcount_${id}`)) ?? 0;
+      for (let i = 1; i <= n; i++) {
+        const weight = num(formData.get(`sw_${id}_${i}`));
+        const reps = int(formData.get(`sr_${id}_${i}`));
+        const rir = int(formData.get(`srir_${id}_${i}`));
+        // 整组留空 = 这组没做, 跳过 (中间跳过一组时后面的组号会往前挪, 不留空洞)
+        if (weight === null && reps === null) continue;
+        rows.push({
+          ...base,
+          set_index: rows.length - before + 1,
+          weight_kg: weight,
+          reps,
+          rir,
+          is_warmup: str(formData.get(`swarm_${id}_${i}`)) === "1",
+          rest_sec: null,
+          performed_at: null,
+        });
+      }
+    } else {
+      const weight = num(formData.get(`weight_${id}`));
+      const reps = int(formData.get(`reps_${id}`));
+      const rir = int(formData.get(`rir_${id}`));
+      const sets = int(formData.get(`sets_${id}`));
+      // 只保存真正练了的: 重量/组数/次数至少填了一项
+      if (weight === null && reps === null && sets === null) continue;
+      for (let i = 1; i <= Math.max(sets ?? 1, 1); i++) {
+        rows.push({
+          ...base,
+          set_index: i,
+          weight_kg: weight,
+          reps,
+          rir,
+          is_warmup: false,
+          rest_sec: null,
+          performed_at: null,
+        });
+      }
+    }
+
+    if (rows.length > before) setCountByExercise.set(exercise, rows.length - before);
+  }
 
   if (!rows.length) return { error: "还没填任何数据, 至少填一个动作的重量或组次" };
 
-  const { error } = await supabase.from("workout_logs").insert(rows);
+  const { error } = await supabase
+    .from("workout_logs")
+    .upsert(rows, { onConflict: "user_id,date,exercise,set_index" });
   if (error) return { error: error.message };
+
+  // 裁掉这次没写到的尾巴 (上次记了 4 组, 这次只记 3 组)
+  for (const [exercise, n] of setCountByExercise) {
+    await supabase
+      .from("workout_logs")
+      .delete()
+      .eq("user_id", userId)
+      .eq("date", date)
+      .eq("exercise", exercise)
+      .gt("set_index", n);
+  }
 
   revalidatePath("/workouts");
   revalidatePath("/");

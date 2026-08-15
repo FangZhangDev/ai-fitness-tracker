@@ -321,8 +321,9 @@ function DayCard({
               </span>
             )}
             <span className="ml-2 whitespace-nowrap tabular-nums text-neutral-400">
-              {r2(w.weight_kg)}kg × {w.sets ?? "—"}×{w.reps ?? "—"}
+              {w.set_index}组 · {r2(w.weight_kg)}kg × {w.reps ?? "—"}
               {w.rir !== null && ` · RIR ${w.rir}`}
+              {w.is_warmup && " · 热身"}
             </span>
           </Row>
         ))}

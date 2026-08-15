@@ -29,14 +29,18 @@ export interface AnalysisContext {
     total_carbs_g: number;
     total_fat_g: number;
   }>;
-  // 训练记录 (按日期)
+  // 训练记录: 一次训练一个动作一条 (视图 v_exercise_sessions)。
+  // 数据库里是一行一组, 但 90 天的原始组能有上千行 —— 聚合之后 token 不涨,
+  // 而且 volume/avg_rir/dropped 这些恰恰是模型判断训练质量要看的东西。
   workouts: Array<{
     date: string;
     exercise: string;
-    weight_kg: number | null;
-    sets: number | null;
-    reps: number | null;
-    rir: number | null;
+    sets: number;
+    top_weight_kg: number | null;
+    total_reps: number | null;
+    volume_kg: number | null;
+    avg_rir: number | null;
+    dropped: boolean;
   }>;
 }
 
@@ -69,6 +73,7 @@ export async function analyzePeriod(ctx: AnalysisContext): Promise<AiAnalysisRep
 - 增肌期理想增重约 0.25-0.5kg/周; 过快易囤脂, 过慢则热量不足
 - 蛋白摄入建议 1.6-2.2g/kg 体重
 - 综合体重/腰围/蛋白/训练量/RIR 判断
+- 训练量看 volume_kg 的走势; dropped=true 表示那次最后一组掉了重量, 偶尔出现正常, 连续出现多半是恢复不足
 - 建议要具体、可执行, 不要空话
 
 ${WEIGHT_CONVENTION}
@@ -84,7 +89,7 @@ ${JSON.stringify(ctx.metrics)}
 每日营养汇总:
 ${JSON.stringify(ctx.nutrition)}
 
-训练记录:
+训练记录 (一次训练一个动作一条; sets=工作组数, volume_kg=容量, dropped=最后一组比最重那组轻):
 ${JSON.stringify(ctx.workouts)}`;
 
   const json = (await chatJSON(system, user)) as AiAnalysisReport;
