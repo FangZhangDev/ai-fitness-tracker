@@ -35,6 +35,46 @@ export function todayWeekday() {
 }
 
 /**
+ * 把刚补传成功的记录并进整周缓存的今日完成情况。
+ *
+ * 不做这一步的话会有个很显眼的毛病: 记完一组返回列表, 那个勾会先消失一下 ——
+ * 队列已经清空, 而缓存里的 today.done 还是上次联网时的旧值, 于是靠缓存拼出来的
+ * 首屏把这个动作画成未完成, 要等网络回来才补上。走蓝牙转发时这个空窗有一两秒。
+ *
+ * today.done 不参与 version 计算(它天天在变), 所以这里只动 today 字段,
+ * version / savedAt 都保持原样, 不会影响下次的增量校验, 也不会让
+ * 「几天前的计划」那条提示错乱。
+ */
+function mergeDoneIntoCache(logs) {
+  return store.getWeek().then(function (cache) {
+    // 没缓存就没什么可并的 —— 下一次联网本来就会整份取回
+    if (!cache) return
+    const today = todayStr()
+    // 缓存里的完成情况跨天就作废, 与 buildDayPayload 的口径保持一致
+    const done =
+      cache.today && cache.today.date === today && cache.today.done
+        ? cache.today.done
+        : {}
+    let n = 0
+    for (let i = 0; i < logs.length; i++) {
+      const g = logs[i]
+      // 补传的可能是昨天攒下的, 那些不该算进今天
+      if (!g || g.date !== today) continue
+      done[g.exercise] = {
+        weight_kg: g.weight_kg,
+        sets: g.sets,
+        reps: g.reps,
+        rir: g.rir,
+      }
+      n++
+    }
+    if (!n) return
+    cache.today = { date: today, done: done }
+    return store.setWeek(cache)
+  })
+}
+
+/**
  * 把离线队列里的记录补传上去。
  * 队列为空或没网都算「无事发生」, 不抛错。
  * @returns {Promise<number>} 成功补传的条数
@@ -48,8 +88,12 @@ export function flushPending(token) {
     return api
       .submitLogs(token, list)
       .then(function () {
-        return store.clearPending().then(function () {
-          return list.length
+        // 先并进缓存再清队列: 万一中间断电, 队列还在, 大不了重传一次 ——
+        // 服务端对「同一天同一动作」是覆盖语义, 重传不会脏数据
+        return mergeDoneIntoCache(list).then(function () {
+          return store.clearPending().then(function () {
+            return list.length
+          })
         })
       })
       .catch(function (err) {

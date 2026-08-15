@@ -18,21 +18,17 @@
 // ---------------------------------------------------------------------------
 
 let _router = null
-let _routerName = ''
 try {
   _router = require('@blueos.app.appmanager.router')
-  _routerName = '@blueos.app.appmanager.router'
 } catch (e) {}
 if (!_router) {
   try {
     _router = require('@blueos.app.router')
-    _routerName = '@blueos.app.router'
   } catch (e) {}
 }
 if (!_router) {
   try {
     _router = require('@system.router')
-    _routerName = '@system.router'
   } catch (e) {}
 }
 
@@ -66,14 +62,16 @@ if (!_vibrator) {
   } catch (e) {}
 }
 
-console.log(
-  '[device] router=' + (_routerName || '不可用') +
-    ' ' + shape(_router, ['push', 'back', 'replace'])
-)
-console.log(
-  '[device] prompt ' + shape(_prompt, ['showToast']) +
-    ' | vibrator ' + shape(_vibrator, ['vibrate', 'start'])
-)
+// 正常启动不出声。router 拿不到是致命的(按钮点不动、返回不了), 只在这时把
+// 另外两个模块的真实形状也一次性打出来 —— 平时不刷屏, 出事时不用再回来加日志。
+// prompt / vibrator 单独缺失只是没提示、没震动, 不值得每次启动都报一遍。
+if (!_router) {
+  console.log(
+    '[device] 三个 router feature 全拿不到, 页面跳转会失效 | prompt ' +
+      shape(_prompt, ['showToast']) +
+      ' | vibrator ' + shape(_vibrator, ['vibrate', 'start'])
+  )
+}
 
 /**
  * 安全调用: 方法不存在或抛错都不该让整个页面崩掉。

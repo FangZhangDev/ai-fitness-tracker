@@ -37,16 +37,9 @@ for (let i = 0; i < STORAGE_CANDIDATES.length; i++) {
   }
 }
 
-console.log('[store] storage可用=' + (_storageName || 'NO'))
-for (let i = 0; i < STORAGE_CANDIDATES.length; i++) {
-  const m = STORAGE_CANDIDATES[i].mod
-  console.log(
-    '[store]   ' + STORAGE_CANDIDATES[i].name + ' -> ' +
-      (m
-        ? 'get=' + typeof m.get + ' set=' + typeof m.set + ' delete=' + typeof m.delete
-        : 'null')
-  )
-}
+// 正常启动不出声; 一个候选都解析不出来才报警, 那是致命的(token 存不下,
+// 配对完重启又要重配), 逐个候选的形状交给下面的 storageDiag() 按需取
+if (!storage) console.log('[store] 没有可用的 storage: ' + storageDiag())
 
 /** 供界面显示的诊断文本 */
 export function storageDiag() {

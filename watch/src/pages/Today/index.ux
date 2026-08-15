@@ -1,13 +1,11 @@
 <template>
   <div class="page">
     <!--
-      版本号: 不带任何条件, 一定会渲染。
-      两个用途 ——
-        1. 一眼确认装上的是不是新包(versionCode 不变时系统可能不真正覆盖)
-        2. 若它显示了而下面各屏都空白, 即可断定是条件渲染失效, 而非白屏崩溃
-      功能稳定后可删。
+      版本号: 不带任何条件, 一定会渲染, 用来一眼确认装上的是不是新包
+      (versionCode 不变时系统可能不真正覆盖)。
+      早期它后面还跟着一个 bootInfo 执行探针, 各屏都稳定后已撤掉。
     -->
-    <text class="ver">v1.2.2 {{ bootInfo }}</text>
+    <text class="ver">v1.2.3</text>
 
     <!-- ============ 加载中 ============ -->
     <div if="{{ isLoading }}" class="center">
@@ -161,9 +159,6 @@
       // 真机上模板里的条件「表达式」(如 stage === 'loading')不生效, 带这类
       // 条件的元素会整个不渲染 —— 表现为满屏只剩没有条件的那几个元素。
       // 官方性能文档也要求不要在模板里写复杂表达式, 故一律在 JS 里算好。
-      // 执行进度探针: 静态文字能显示但它不显示, 说明数据绑定失效;
-      // 它能跟着变, 说明 JS 在跑, 那问题就只在条件渲染
-      bootInfo: 'init',
       isLoading: true,
       isUnpaired: false,
       isPickday: false,
@@ -187,7 +182,6 @@
     onShow() {
       // 有交互就把屏幕续 30 秒, 见 common/screen.js
       screen.awake()
-      this.bootInfo = 'show'
       // 每次回到本页都重新拉一次 —— 从记录页返回后进度要立刻更新
       this.boot()
     },
@@ -213,11 +207,9 @@
 
     boot() {
       const self = this
-      self.bootInfo = 'boot'
       store
         .getToken()
         .then(function (token) {
-          self.bootInfo = token ? 'tok:Y' : 'tok:N'
           if (!token) {
             self.setStage('unpaired')
             return
@@ -229,7 +221,8 @@
           self.load(token)
         })
         .catch(function (e) {
-          self.bootInfo = 'tokErr:' + e
+          console.log('[today] 读 token 失败: ' + e)
+          self.setStage('unpaired')
         })
     },
 
@@ -322,7 +315,6 @@
           ? Math.round((386 * this.doneCount) / this.totalCount)
           : 0
 
-        this.bootInfo = 'ok ' + this.doneCount + '/' + this.totalCount
         console.log(
           '[today] applyPlan 完成 ' + this.doneCount + '/' + this.totalCount
         )

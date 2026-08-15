@@ -72,10 +72,9 @@ for (let i = 0; i < CANDIDATES.length; i++) {
   }
 }
 
-console.log('[api] fetch可调用=' + (_fetchFn ? _fetchName : 'NO'))
-for (let i = 0; i < CANDIDATES.length; i++) {
-  console.log('[api]   ' + CANDIDATES[i].name + ' -> ' + probe(CANDIDATES[i].mod))
-}
+// 正常启动不出声; 一个候选都解析不出来才报警(整个应用就只剩缓存能用),
+// 逐个候选的形状交给下面的 diagText() 按需取
+if (!_fetchFn) console.log('[api] 没有可用的 fetch: ' + diagText())
 
 function getFetch() {
   return _fetchFn
