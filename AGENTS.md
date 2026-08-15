@@ -15,7 +15,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 | 你动了 | 要做什么才生效 | AI 能不能自己做 |
 |---|---|---|
-| `app/` `components/` `lib/` `proxy.ts` `public/` | **`vercel --prod`**（见下） | ✅ 能 |
+| `app/` `components/` `lib/` `proxy.ts` `public/` | **`vercel --prod --yes --scope fzg002s-projects`**（见下） | ✅ 能 |
 | `watch/src/**` | BlueOS Studio 重新打包 rpk → 推到手表，且 `versionCode` 必须 +1 | ❌ 只能人工 |
 | `watch/proxy/**` | 重启转发服务进程 | ✅ 能 |
 | `supabase/migrations/**` | Supabase 控制台 → SQL Editor 粘贴执行 | ❌ 只能人工（AI 没有库凭据）|
@@ -39,14 +39,20 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ```bash
 export PATH="$HOME/.nvm/versions/node/v22.18.0/bin:$PATH"   # 非登录 shell 里没有 nvm 的 PATH
 cd <repo>
-vercel --prod --yes          # 直传源码, 由 Vercel 构建, 约 40s
+vercel --prod --yes --scope fzg002s-projects   # 直传源码, 由 Vercel 构建, 约 45s
 ```
+
+> **`--scope` 不能省。** CLI 58.11.0 起，不带它会直接返回
+> `{"status":"error","reason":"deploy_failed","message":"Not authorized"}`。
+> 这不是掉登录——`vercel whoami`（回 `fzg002`）和 `vercel ls` 都正常，
+> `.vercel/project.json` 里的 orgId 也在，只是新版 CLI 不再自己推断 team scope。
+> 2026-08-15 踩到并确认。
 
 验证（**别只用本机 curl 打 vercel.app 判定成败**——国内直连经常超时，
 那是网络问题不是部署失败）：
 
 ```bash
-vercel ls ai-fitness-tracker | head -5   # 最新一条应为 ● Ready / Production
+vercel ls ai-fitness-tracker --scope fzg002s-projects | head -5   # 最新一条应为 ● Ready / Production
 curl -s -o /dev/null -w '%{http_code}\n' https://ai-fitness-tracker-murex.vercel.app/login   # 200
 ```
 
@@ -58,7 +64,8 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ai-fitness-tracker-murex.vercel
 代价是「推了代码忘了部署」，所以约定死一条规矩：
 
 > **只要这次改动碰了 `app/` `components/` `lib/` `proxy.ts` `public/`，
-> 提交之后就要跑一次 `vercel --prod --yes`，并在汇报里写明部署结果。**
+> 提交之后就要跑一次 `vercel --prod --yes --scope fzg002s-projects`，
+> 并在汇报里写明部署结果。**
 > 只改了 `watch/`、`supabase/`、文档，就别跑，也别说「等待上线」。
 
 ### 环境变量
