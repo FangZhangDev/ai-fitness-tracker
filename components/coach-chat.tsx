@@ -39,6 +39,7 @@ const TOOL_LABEL: Record<string, string> = {
   get_prs: "查历史最好成绩",
   query_metrics: "查身体数据",
   query_nutrition: "查饮食记录",
+  get_trend: "看长期趋势",
   add_plan_day: "新增训练日",
   add_plan_exercises: "添加动作",
   update_plan_exercise: "修改动作",

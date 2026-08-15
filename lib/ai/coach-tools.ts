@@ -274,6 +274,25 @@ const READ_TOOLS: ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_trend",
+      description:
+        "按月聚合的长期趋势: 每月训练天数/组数/容量/最大重量, 以及体重、体脂、腰围、日均热量蛋白质。「最近几个月/一年/两年变化怎么样」「有没有进步」这类跨大时间段的问题用它, 不要用 query_workouts 查大范围明细 (会被 400 行截断)。",
+      parameters: {
+        type: "object",
+        properties: {
+          months: { type: "integer", description: "往前聚合多少个月, 1-36, 默认 12" },
+          exercise: {
+            type: ["string", "null"],
+            description: "只看某个动作的趋势 (它的每月最大重量/1RM/容量); 不传则全部动作合计",
+          },
+        },
+        required: [],
+      },
+    },
+  },
 ];
 
 /** 写工具: 只在允许写时注入 */
@@ -432,6 +451,8 @@ export async function runTool(ctx: ToolCtx, name: string, argsJson: string): Pro
         return await queryMetrics(ctx, args);
       case "query_nutrition":
         return await queryNutrition(ctx, args);
+      case "get_trend":
+        return await getTrend(ctx, args);
 
       case "add_plan_day":
         return await guardWrite(ctx, () => addPlanDay(ctx, args));
@@ -571,9 +592,17 @@ async function queryWorkouts(ctx: ToolCtx, args: Record<string, unknown>): Promi
     .gte("date", daysAgoISO(days - 1))
     .order("date", { ascending: true });
   if (exercise) q = q.eq("exercise", exercise);
-  const { data, error } = await q;
+  // 401 是为了探测截断: 全量 180 天不带过滤可能有上千行, 一次性回喂会
+  // 撑爆上下文。截断时明说, 让模型自己加过滤或改用 get_trend。
+  const { data, error } = await q.limit(401);
   if (error) return json({ error: error.message });
-  return json({ days, count: data?.length ?? 0, sessions: data ?? [] });
+  const truncated = (data?.length ?? 0) > 400;
+  return json({
+    days,
+    count: Math.min(data?.length ?? 0, 400),
+    ...(truncated ? { note: "结果超过 400 行已截断。请加 exercise 过滤、缩短天数, 或改用 get_trend 看月度聚合。" } : {}),
+    sessions: (data ?? []).slice(0, 400),
+  });
 }
 
 async function getPrs(ctx: ToolCtx): Promise<string> {
@@ -606,6 +635,126 @@ async function queryNutrition(ctx: ToolCtx, args: Record<string, unknown>): Prom
     .order("date", { ascending: true });
   if (error) return json({ error: error.message });
   return json({ days, nutrition: data ?? [] });
+}
+
+// ---------------------------------------------------------------------------
+// 长期趋势 (按月聚合) -- 「这一年变化怎么样」的专用通道
+//
+// 不放开 query_workouts 的 180 天上限, 而是单独做聚合: 原始明细一年上千行,
+// 直接回喂会撑爆上下文和 60s 预算; 按月聚合后无论查多少年, 回喂行数恒定
+// (最多 36 个月)。聚合在服务端 JS 里做 -- 一年的明细拉到服务器也就 ~1000 行,
+// 毫秒级, 不值得为它单写一个数据库函数。
+// ---------------------------------------------------------------------------
+async function getTrend(ctx: ToolCtx, args: Record<string, unknown>): Promise<string> {
+  const months = clampInt(args.months, 1, 36) ?? 12;
+  const exercise = text(args.exercise, 100);
+  // months*31 天略宽于 N 个自然月, 聚合桶按 date 的 YYYY-MM 归位, 多拉几天
+  // 只会让最早的月份数据稍多几天, 不影响整体走势
+  const since = daysAgoISO(months * 31 - 1);
+
+  const [sessRes, metRes, nutRes] = await Promise.all([
+    ctx.supabase
+      .from("v_exercise_sessions")
+      .select("date,exercise,sets,top_weight_kg,best_1rm_kg,volume_kg")
+      .gte("date", since),
+    ctx.supabase
+      .from("daily_metrics")
+      .select("date,weight_kg,body_fat_pct,waist_cm")
+      .gte("date", since),
+    ctx.supabase
+      .from("v_daily_nutrition")
+      .select("date,total_calories,total_protein_g")
+      .gte("date", since),
+  ]);
+  if (sessRes.error) return json({ error: sessRes.error.message });
+
+  type WBucket = {
+    month: string;
+    days: Set<string>;
+    sets: number;
+    volume: number;
+    top: number;
+    best1rm: number;
+  };
+  const wb = new Map<string, WBucket>();
+  const wOf = (m: string) =>
+    wb.get(m) ?? { month: m, days: new Set(), sets: 0, volume: 0, top: 0, best1rm: 0 };
+
+  for (const s of sessRes.data ?? []) {
+    if (exercise && s.exercise !== exercise) continue;
+    const m = s.date.slice(0, 7);
+    const b = wOf(m);
+    b.days.add(s.date);
+    b.sets += s.sets ?? 0;
+    b.volume += s.volume_kg ?? 0;
+    b.top = Math.max(b.top, s.top_weight_kg ?? 0);
+    b.best1rm = Math.max(b.best1rm, s.best_1rm_kg ?? 0);
+    wb.set(m, b);
+  }
+
+  // 通用月均: 值可能为 null(那天没记), 只对有数据的算平均
+  const monthlyAvg = (
+    rows: Array<Record<string, unknown>> | null,
+    field: string,
+  ): Map<string, { sum: number; n: number }> => {
+    const acc = new Map<string, { sum: number; n: number }>();
+    for (const r of rows ?? []) {
+      const v = r[field];
+      if (typeof v !== "number") continue;
+      const m = String(r.date).slice(0, 7);
+      const cur = acc.get(m) ?? { sum: 0, n: 0 };
+      cur.sum += v;
+      cur.n += 1;
+      acc.set(m, cur);
+    }
+    return acc;
+  };
+  const avgOf = (acc: Map<string, { sum: number; n: number }>, m: string) =>
+    acc.has(m) ? Math.round((acc.get(m)!.sum / acc.get(m)!.n) * 10) / 10 : null;
+
+  const monthsList = [...wb.keys()].sort();
+  // 身体/饮食的月份并进训练的月份轴; 只有身体数据没训练的月份也保留,
+  // 否则停训期(通常正是该聊的时期)在趋势里消失
+  for (const src of [metRes.data, nutRes.data]) {
+    for (const r of (src ?? []) as Array<Record<string, unknown>>) {
+      monthsList.push(String(r.date).slice(0, 7));
+    }
+  }
+  const allMonths = [...new Set(monthsList)].sort();
+
+  const weightAcc = monthlyAvg(metRes.data, "weight_kg");
+  const fatAcc = monthlyAvg(metRes.data, "body_fat_pct");
+  const waistAcc = monthlyAvg(metRes.data, "waist_cm");
+  const kcalAcc = monthlyAvg(nutRes.data, "total_calories");
+  const proteinAcc = monthlyAvg(nutRes.data, "total_protein_g");
+
+  return json({
+    months: allMonths.length,
+    exercise: exercise || "全部动作",
+    workouts: allMonths.map((m) => {
+      const b = wb.get(m);
+      return {
+        month: m,
+        训练天数: b?.days.size ?? 0,
+        总组数: b?.sets ?? 0,
+        总容量kg: b ? Math.round(b.volume) : 0,
+        最大重量kg: b?.top || null,
+        最好1rm_kg: b?.best1rm || null,
+      };
+    }),
+    body: allMonths.map((m) => ({
+      month: m,
+      体重kg: avgOf(weightAcc, m),
+      体脂pct: avgOf(fatAcc, m),
+      腰围cm: avgOf(waistAcc, m),
+    })),
+    nutrition: allMonths.map((m) => ({
+      month: m,
+      日均热量: avgOf(kcalAcc, m),
+      日均蛋白质g: avgOf(proteinAcc, m),
+    })),
+    note: "按自然月聚合; 体重/热量是当月日均。中文字段名是给模型看的, 方便它直接引用。",
+  });
 }
 
 // ---- 写 ----------------------------------------------------------------
