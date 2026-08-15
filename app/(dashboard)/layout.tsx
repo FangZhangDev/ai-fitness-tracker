@@ -1,4 +1,5 @@
 import { Nav } from "@/components/nav";
+import { ToastHost } from "@/components/toast-host";
 
 // 仪表盘组布局: 响应式 (PC 侧边栏 / 移动底部 Tab), 主内容区留出导航空间
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -11,6 +12,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </div>
       </main>
+      {/* 全局轻提示, 见 lib/utils/toast.ts */}
+      <ToastHost />
     </div>
   );
 }

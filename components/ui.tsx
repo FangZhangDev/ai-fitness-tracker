@@ -1,6 +1,7 @@
 // 共享 UI 原语 (服务端/客户端通用, 无 'use client' 以便服务端组件直接用)
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { toast } from "@/lib/utils/toast";
 
 export function Card({
   className = "",
@@ -167,13 +168,14 @@ export const ACTIVITY_LABEL: Record<string, string> = {
  *
  * 这些删除/重分析按钮原先写成 `await deleteX(fd)`, 返回的 { error } 被直接丢掉,
  * 于是会话过期之类的失败表现为「点了没反应」, 最难排查的那种。
- * 这里用 alert 是刻意的最小实现 —— 个人自用, 失败路径极少走到,
- * 犯不上为它引入一套 toast; 真要换成好看的提示, 改这一个函数就够。
+ * 早先这里用的是 window.alert —— 够用, 但它会阻塞整页、样式是浏览器原生的,
+ * 手机上尤其突兀。现在换成自己那套轻提示(components/toast-host.tsx),
+ * 不到 60 行, 没引任何库。
  */
 export async function runAction<T extends { error?: string }>(
   p: Promise<T>,
 ): Promise<T> {
   const res = await p;
-  if (res?.error && typeof window !== "undefined") window.alert(res.error);
+  if (res?.error) toast(res.error, "error");
   return res;
 }

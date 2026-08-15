@@ -3,6 +3,14 @@
 :root {
   --background: #f6f7f9;
   --foreground: #0f172a;
+
+  /* 图表配色。单独抽出来是因为 recharts 把颜色写成 SVG 呈现属性,
+     而呈现属性不支持 var() —— 只能靠下面的 CSS 规则覆盖它们(CSS 优先级高于呈现属性)。 */
+  --chart-grid: #e5e5e5;
+  --chart-axis: #9ca3af;
+  --chart-surface: #ffffff;
+  --chart-border: #e5e5e5;
+  --chart-text: #0f172a;
 }
 
 @theme inline {
@@ -17,6 +25,13 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --chart-grid: #262626;
+    --chart-axis: #6b7280;
+    /* 深色下 tooltip 必须自己给底色: recharts 默认白底, 会在暗页面上炸出一块白 */
+    --chart-surface: #171717;
+    --chart-border: #404040;
+    --chart-text: #ededed;
   }
 }
 
@@ -37,6 +52,25 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* ---------------------------------------------------------------------------
+   recharts 主题适配
+   颜色本来写在组件的 stroke/fill 属性里, 那是 SVG「呈现属性」——
+   优先级低于任何 CSS 规则, 所以这里能干净地覆盖掉, 不用给组件传一堆颜色,
+   也不用在客户端跑 matchMedia(那会有一帧浅色闪烁)。
+   --------------------------------------------------------------------------- */
+.recharts-cartesian-grid line {
+  stroke: var(--chart-grid);
+}
+.recharts-cartesian-axis-line,
+.recharts-cartesian-axis-tick-line {
+  stroke: var(--chart-axis);
+}
+.recharts-cartesian-axis-tick-value {
+  fill: var(--chart-axis);
+}
+/* 图例文字不动: recharts 默认拿系列色染它, 那是有用的颜色对应关系,
+   而靛蓝/翠绿这两个中间调在深浅色底上都够清楚 */
+
 @layer components {
   .card {
     @apply rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
@@ -47,8 +81,9 @@ input[type="number"] {
   .label {
     @apply mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400;
   }
+  /* focus-visible 只在键盘操作时出现, 鼠标点击不会留下一圈框 */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
     @apply bg-indigo-600 text-white hover:bg-indigo-700;
