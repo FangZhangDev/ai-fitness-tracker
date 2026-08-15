@@ -340,7 +340,13 @@ begin
         nullif(rec->>'rir','')::int,
         coalesce(nullif(rec->>'is_warmup','')::boolean, false),
         nullif(rec->>'rest_sec','')::int,
-        nullif(rec->>'performed_at','')::timestamptz,
+        -- 手表传的是 epoch 毫秒 (performed_at_ms): 让它自己拼 ISO 字符串的话,
+        -- 不带时区就会被当成 UTC, 手表在 Asia/Shanghai, 每条都差 8 小时。
+        -- performed_at 文本形式仍然收, 方便别的客户端。
+        coalesce(
+          to_timestamp(nullif(rec->>'performed_at_ms','')::numeric / 1000.0),
+          nullif(rec->>'performed_at','')::timestamptz
+        ),
         nullif(rec->>'notes',''),
         'watch'
       )

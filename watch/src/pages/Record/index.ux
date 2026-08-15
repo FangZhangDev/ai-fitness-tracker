@@ -10,34 +10,52 @@
     rotation-sensitivity="1"
     @rotation="onRotation"
   >
-    <!-- 动作名 -->
-    <text class="ex-name">{{ exercise }}</text>
+    <!-- ============ 记录这一组 ============ -->
+    <div if="{{ isEdit }}" class="pane">
+      <text class="ex-name">{{ exercise }}</text>
+      <!-- 第几组: 一屏里唯一说明「现在在记哪一组」的地方, 紧贴动作名 -->
+      <text class="set-line">{{ setLine }}</text>
 
+      <!--
+        当前调节的数值: 一屏里最大的元素, 转表冠时只有它在变。
+        上下用两条细横线代替 ▲▼ —— 那类几何符号手表字体未必收录, 缺字会显示成方块;
+        横线用 CSS 画, 一定渲染正确, 同样能暗示「这个值可上下调」。
+      -->
+      <div class="value-wrap">
+        <div class="tick"></div>
+        <div class="value-row">
+          <text class="value">{{ displayValue }}</text>
+          <text class="unit">{{ displayUnit }}</text>
+        </div>
+        <div class="tick"></div>
+      </div>
+
+      <!-- 字段切换: 点哪个就调哪个。第一个是组号, 补记漏掉的那组时用得上 -->
+      <div class="tabs">
+        <div class="tab" for="{{ fields }}" onclick="setField($idx)">
+          <text class="{{ $item.labelCls }}">{{ $item.label }}</text>
+          <text class="{{ $item.valueCls }}">{{ $item.text }}</text>
+        </div>
+      </div>
+
+      <div class="{{ doneCls }}" onclick="save">
+        <text class="done-text">{{ doneText }}</text>
+      </div>
+    </div>
+
+    <!-- ============ 组间休息 ============ -->
     <!--
-      当前调节的数值: 一屏里最大的元素, 转表冠时只有它在变。
-      上下用两条细横线代替 ▲▼ —— 那类几何符号手表字体未必收录, 缺字会显示成方块;
-      横线用 CSS 画, 一定渲染正确, 同样能暗示「这个值可上下调」。
+      记完一组自动开始。整屏就一个大数字 + 一个跳过按钮 ——
+      组间抬手看表就为了看还剩多久, 别的都是干扰。
     -->
-    <div class="value-wrap">
-      <div class="tick"></div>
-      <div class="value-row">
-        <text class="value">{{ displayValue }}</text>
-        <text class="unit">{{ displayUnit }}</text>
+    <div if="{{ isRest }}" class="pane">
+      <text class="rest-hint">休息</text>
+      <text class="rest-num">{{ restLabel }}</text>
+      <text class="rest-sub">{{ restSub }}</text>
+      <div class="rest-btn" onclick="finishRest">
+        <text class="rest-btn-text">跳过</text>
       </div>
-      <div class="tick"></div>
-    </div>
-
-    <!-- 字段切换: 点哪个就调哪个 -->
-    <div class="tabs">
-      <div class="tab" for="{{ fields }}" onclick="setField($idx)">
-        <text class="{{ $item.labelCls }}">{{ $item.label }}</text>
-        <text class="{{ $item.valueCls }}">{{ $item.text }}</text>
-      </div>
-    </div>
-
-    <!-- 完成 -->
-    <div class="{{ doneCls }}" onclick="save">
-      <text class="done-text">{{ doneText }}</text>
+      <text class="rest-tip">转表冠可加减 15 秒</text>
     </div>
   </div>
 </template>
@@ -51,15 +69,30 @@
   import * as screen from '../../common/screen.js'
   import { createRotary } from '../../common/rotary.js'
 
+  // 第一个字段是组号 —— 默认停在「重量」上(fieldIdx=1), 那才是每组都要动的那个
   const FIELDS = [
+    { key: 'sets', label: '组', unit: '组' },
     { key: 'weight', label: '重量', unit: 'kg' },
-    { key: 'sets', label: '组数', unit: '组' },
     { key: 'reps', label: '次数', unit: '次' },
     { key: 'rir', label: 'RIR', unit: '' },
   ]
 
+  /** 计划里没写休息时长时用它 (秒) */
+  const REST_FALLBACK = 90
+  /** 表冠在休息页一格加减多少秒 */
+  const REST_STEP = 15
+
   function fmt(n) {
     return String(Math.round(n * 100) / 100)
+  }
+
+  /** 秒 -> 1:05 / 45 */
+  function fmtClock(sec) {
+    if (sec < 0) sec = 0
+    const m = Math.floor(sec / 60)
+    const s = sec % 60
+    if (m <= 0) return String(s)
+    return m + ':' + (s < 10 ? '0' + s : String(s))
   }
 
   // 表冠节流: 见 common/rotary.js。这一页调的是重量, 转过头要退回来很烦,
@@ -73,28 +106,42 @@
     // 路由参数同样通过 data 接收: 文档说明「使用 data 声明的属性会被外部数据覆盖」,
     // 因此 exercise/weight 等仍能由 router.push 的 params 填入。
     data: {
-      // ↓ 由上一页 router.push 传入
+      // ↓ 由上一页 router.push 传入 (蓝河给过来的都是字符串)
       exercise: '',
       workoutDay: '',
       weight: '0',
-      sets: '3',
       reps: '8',
       rir: '2',
-      fieldIdx: 0, // 当前正在调的字段
-      vals: { weight: 0, sets: 3, reps: 8, rir: 2 },
+      setIndex: '1', // 这次要记第几组
+      targetSets: '0', // 计划里这个动作几组; 0 = 没写
+      restSec: '0', // 计划里的组间休息秒数; 0 = 没写, 用 REST_FALLBACK
+
+      fieldIdx: 1, // 当前正在调的字段, 默认「重量」
+      vals: { sets: 1, weight: 0, reps: 8, rir: 2 },
       displayValue: '0',
       displayUnit: 'kg',
       fields: [],
+      setLine: '',
       saving: false,
       // 模板专用派生字段: 真机上模板内的三元/表达式不可靠, 一律在 JS 里算好
       doneCls: 'done-btn',
       doneText: '完成',
+      isEdit: true,
+      isRest: false,
+      restLabel: '',
+      restSub: '',
+      // 倒计时按「结束时刻」算, 不按每秒自减 ——
+      // 息屏或退到后台时定时器可能被系统压制, 自减会越走越慢, 算时刻则怎么样都准
+      restEndAt: 0,
+      restPlanned: 0, // 这次休息原定多少秒, 用来算实际休息了多久
+      restTimer: null,
+      lastLog: null, // 刚记完的那一组, 休息结束后要带着 rest_sec 再传一次
     },
 
     onInit() {
       this.vals = {
+        sets: Math.max(Number(this.setIndex) || 1, 1),
         weight: Number(this.weight) || 0,
-        sets: Number(this.sets) || 0,
         reps: Number(this.reps) || 0,
         rir: Number(this.rir) || 0,
       }
@@ -103,10 +150,17 @@
 
     onShow() {
       screen.awake()
+      // 从后台回来时倒计时可能已经走完了, 补一次判断
+      if (this.isRest) this.tickRest()
     },
 
     onHide() {
       screen.release()
+    },
+
+    onDestroy() {
+      // 页面销毁还留着 interval 的话, 回调里再去碰已卸载的组件会报错
+      this.stopRestTimer()
     },
 
     onReady() {
@@ -133,6 +187,11 @@
       this.fields = list
       this.displayValue = fmt(this.vals[cur.key])
       this.displayUnit = cur.unit
+
+      const target = Number(this.targetSets) || 0
+      this.setLine = target > 0
+        ? '第 ' + this.vals.sets + ' / ' + target + ' 组'
+        : '第 ' + this.vals.sets + ' 组'
     },
 
     /**
@@ -142,13 +201,21 @@
      *
      * 注意: 曾经有一档「velocity > 15 就步进 ×4」的加速逻辑, 已删除。
      * 它和 delta 原样累加叠在一起, 手腕一带就是 2kg 起跳, 是数字窜飞的主因。
-     * 记录页的初值本来就预填成历史最大重量, 只需小幅微调, 不需要加速档。
+     * 记录页的初值本来就预填成上一组的值, 只需小幅微调, 不需要加速档。
      */
     onRotation(e) {
       // 转表冠算交互, 屏幕续期; 状态没变时这里不会碰原生接口, 放心高频调
       screen.awake()
       const dir = rotary.feed(e)
       if (!dir) return
+
+      // 休息页: 表冠加减剩余时间, 觉得没歇够就多转两下
+      if (this.isRest) {
+        const left = Math.max(this.secLeft() + dir * REST_STEP, 0)
+        this.restEndAt = Date.now() + left * 1000
+        this.tickRest()
+        return
+      }
 
       const key = FIELDS[this.fieldIdx].key
       const step = CONFIG.STEP[key]
@@ -157,7 +224,9 @@
       let next = this.vals[key] + dir * step
       // 浮点累加会攒出 62.50000000000001, 统一收敛到两位
       next = Math.round(next * 100) / 100
-      if (next < range[0]) next = range[0]
+      // 组号最小是 1, 不是 0 —— CONFIG.RANGE.sets 下界给的是 0
+      const lo = key === 'sets' ? 1 : range[0]
+      if (next < lo) next = lo
       if (next > range[1]) next = range[1]
 
       this.vals[key] = next
@@ -179,6 +248,8 @@
       this.doneText = v ? '保存中…' : '完成'
     },
 
+    // ---------------- 保存这一组 ----------------
+
     save() {
       screen.awake()
       if (this.saving) return
@@ -189,10 +260,13 @@
         exercise: this.exercise,
         workout_day: this.workoutDay,
         date: sync.todayStr(),
+        set_index: this.vals.sets,
         weight_kg: this.vals.weight,
-        sets: this.vals.sets,
         reps: this.vals.reps,
         rir: this.vals.rir,
+        is_warmup: false,
+        // epoch 毫秒。自己拼 ISO 字符串不带时区会被服务端当成 UTC, 差 8 小时
+        performed_at_ms: Date.now(),
       }
 
       store.getToken().then(function (token) {
@@ -207,7 +281,8 @@
             device.vibrate()
             device.toast(synced ? '已记录' : '已保存, 联网后自动上传')
             self.setSaving(false)
-            device.back()
+            self.lastLog = log
+            self.startRest()
           })
           .catch(function (err) {
             self.setSaving(false)
@@ -222,6 +297,97 @@
           })
       })
     },
+
+    // ---------------- 组间休息 ----------------
+
+    /** 剩余秒数 (按结束时刻算, 不受定时器被压制影响) */
+    secLeft() {
+      const ms = this.restEndAt - Date.now()
+      return ms <= 0 ? 0 : Math.ceil(ms / 1000)
+    },
+
+    startRest() {
+      const planned = Number(this.restSec) || REST_FALLBACK
+      this.restPlanned = planned
+      this.restEndAt = Date.now() + planned * 1000
+      this.isEdit = false
+      this.isRest = true
+      this.tickRest()
+      this.stopRestTimer()
+      const self = this
+      this.restTimer = setInterval(function () {
+        self.tickRest()
+      }, 1000)
+    },
+
+    stopRestTimer() {
+      if (this.restTimer) {
+        clearInterval(this.restTimer)
+        this.restTimer = null
+      }
+    },
+
+    tickRest() {
+      const left = this.secLeft()
+      this.restLabel = fmtClock(left)
+      this.restSub = '下一组 第 ' + (this.vals.sets + 1) + ' 组'
+      // 倒计时期间一直点亮: 组间抬手就是为了看这个数字, 灭屏等于没有
+      screen.awake()
+      if (left <= 0) {
+        device.vibrate()
+        this.finishRest()
+      }
+    },
+
+    /**
+     * 休息结束(自动到点或手动跳过):
+     *   1. 把实际休息了多久补写回刚才那一组
+     *   2. 组号 +1, 数值沿用上一组, 回到编辑态等着记下一组
+     */
+    finishRest() {
+      if (!this.isRest) return
+      const actual = Math.max(this.restPlanned - this.secLeft(), 0)
+      this.stopRestTimer()
+      this.isRest = false
+      this.isEdit = true
+      screen.awake()
+
+      const log = this.lastLog
+      this.lastLog = null
+      if (log && actual > 0) {
+        const withRest = {
+          exercise: log.exercise,
+          workout_day: log.workout_day,
+          date: log.date,
+          set_index: log.set_index,
+          weight_kg: log.weight_kg,
+          reps: log.reps,
+          rir: log.rir,
+          is_warmup: log.is_warmup,
+          performed_at_ms: log.performed_at_ms,
+          rest_sec: actual,
+        }
+        // 同一组重复提交是安全的: 服务端按 (日期,动作,组号) upsert,
+        // 离线队列也按同样的键去重, 只会留下带 rest_sec 的这一条
+        const self = this
+        store.getToken().then(function (token) {
+          if (token) sync.recordExercise(token, withRest).catch(function () {})
+          self.nextSet()
+        })
+      } else {
+        this.nextSet()
+      }
+    },
+
+    /** 进入下一组: 组号 +1, 重量/次数/RIR 沿用刚才那组 */
+    nextSet() {
+      const max = CONFIG.RANGE.sets[1]
+      if (this.vals.sets < max) this.vals.sets = this.vals.sets + 1
+      // 回到「重量」上 —— 下一组要动的多半是它
+      this.fieldIdx = 1
+      rotary.reset()
+      this.refresh()
+    },
   }
 </script>
 
@@ -233,15 +399,28 @@
     background-color: #000000;
     align-items: center;
   }
+  .pane {
+    flex-direction: column;
+    width: 466px;
+    height: 466px;
+    align-items: center;
+  }
 
   .ex-name {
     width: 366px;
-    margin-top: 44px;
+    margin-top: 38px;
     font-size: 30px;
     color: #8a8a8e;
     text-align: center;
     lines: 1;
     text-overflow: ellipsis;
+  }
+  .set-line {
+    width: 366px;
+    margin-top: 2px;
+    font-size: 22px;
+    color: #00e5a0;
+    text-align: center;
   }
 
   /* ---------- 主数值 ---------- */
@@ -249,8 +428,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    margin-top: 6px;
-    height: 150px;
+    margin-top: 2px;
+    height: 140px;
   }
   /* 用 CSS 横线代替 ▲▼ 字符, 不依赖字体收录几何符号 */
   .tick {
@@ -279,14 +458,14 @@
   /* ---------- 字段切换 ---------- */
   .tabs {
     flex-direction: row;
-    width: 400px;
+    width: 420px;
     margin-top: 4px;
     justify-content: space-between;
   }
   .tab {
     flex-direction: column;
     align-items: center;
-    width: 100px;
+    width: 105px;
   }
   .tab-label {
     font-size: 20px;
@@ -303,7 +482,7 @@
 
   /* ---------- 完成 ---------- */
   .done-btn {
-    margin-top: 22px;
+    margin-top: 20px;
     width: 240px;
     height: 74px;
     border-radius: 37px;
@@ -317,5 +496,49 @@
   .done-text {
     font-size: 30px;
     color: #000000;
+  }
+
+  /* ---------- 组间休息 ---------- */
+  .rest-hint {
+    width: 466px;
+    margin-top: 76px;
+    font-size: 26px;
+    color: #8a8a8e;
+    text-align: center;
+  }
+  /* 倒计时数字比记录页的还大: 隔一米看一眼就要看清 */
+  .rest-num {
+    width: 466px;
+    margin-top: 4px;
+    font-size: 116px;
+    color: #ffffff;
+    text-align: center;
+  }
+  .rest-sub {
+    width: 466px;
+    margin-top: 4px;
+    font-size: 24px;
+    color: #8a8a8e;
+    text-align: center;
+  }
+  .rest-btn {
+    margin-top: 26px;
+    width: 200px;
+    height: 70px;
+    border-radius: 35px;
+    background-color: #1c1c1e;
+    align-items: center;
+    justify-content: center;
+  }
+  .rest-btn-text {
+    font-size: 28px;
+    color: #ffffff;
+  }
+  .rest-tip {
+    width: 466px;
+    margin-top: 14px;
+    font-size: 20px;
+    color: #48484a;
+    text-align: center;
   }
 </style>

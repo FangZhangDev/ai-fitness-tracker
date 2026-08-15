@@ -60,18 +60,38 @@ function mergeDoneIntoCache(logs) {
       const g = logs[i]
       // 补传的可能是昨天攒下的, 那些不该算进今天
       if (!g || g.date !== today) continue
-      done[g.exercise] = {
+      const entry = done[g.exercise] || { done_sets: 0, sets: [] }
+      const sets = entry.sets || []
+      // 同一组号覆盖, 不是追加 —— 记完一组之后还会补一次 rest_sec
+      let hit = -1
+      for (let k = 0; k < sets.length; k++) {
+        if (sets[k].set_index === g.set_index) { hit = k; break }
+      }
+      const one = {
+        set_index: g.set_index,
         weight_kg: g.weight_kg,
-        sets: g.sets,
         reps: g.reps,
         rir: g.rir,
+        is_warmup: !!g.is_warmup,
       }
+      if (hit >= 0) sets[hit] = one
+      else sets.push(one)
+      entry.sets = sets
+      entry.done_sets = countWorkSets(sets)
+      done[g.exercise] = entry
       n++
     }
     if (!n) return
     cache.today = { date: today, done: done }
     return store.setWeek(cache)
   })
+}
+
+/** 工作组数 (热身不算) */
+function countWorkSets(sets) {
+  let n = 0
+  for (let i = 0; i < (sets || []).length; i++) if (!sets[i].is_warmup) n++
+  return n
 }
 
 /**
@@ -106,10 +126,12 @@ export function flushPending(token) {
 
 /**
  * 用缓存 + 本地队列拼出某一天的界面数据。
- * 结构与旧的 watch_get_today 返回值保持一致, 页面那边不用改。
  *
- * 完成状态按「今天的记录」算, 与后端口径一致 —— 手动切到别的训练日时,
- * 打没打勾看的仍是今天做没做过这个动作。
+ * 完成状态按「今天记了哪些组」算, 与服务端口径一致 —— 手动切到别的训练日时,
+ * 看的仍是今天做没做过这个动作。
+ *
+ * done_count / total_count 从「几个动作」改成了「几组」: 一个动作四组只做完两组,
+ * 进度条该走一半, 而不是零或整。
  */
 export function buildDayPayload(cache, weekday, pending) {
   const key = String(weekday)
@@ -121,21 +143,36 @@ export function buildDayPayload(cache, weekday, pending) {
     ? cache.today.done
     : {}
 
-  // 本地队列里今天的记录也算完成 —— 没网时打的勾要立刻显示出来,
+  // 本地队列里今天的记录也算完成 —— 没网时记的组要立刻显示出来,
   // 否则用户会以为没记上, 又记一遍
   const local = {}
   const list = pending || []
   for (let i = 0; i < list.length; i++) {
-    if (list[i] && list[i].date === today) local[list[i].exercise] = list[i]
+    const g = list[i]
+    if (!g || g.date !== today) continue
+    const arr = local[g.exercise] || (local[g.exercise] = [])
+    arr.push({
+      set_index: g.set_index,
+      weight_kg: g.weight_kg,
+      reps: g.reps,
+      rir: g.rir,
+      is_warmup: !!g.is_warmup,
+    })
   }
 
   const src = day && day.exercises ? day.exercises : []
   const out = []
-  let doneCount = 0
+  let doneSets = 0
+  let planSets = 0
   for (let i = 0; i < src.length; i++) {
     const e = src[i]
-    const d = local[e.exercise] || done[e.exercise] || null
-    if (d) doneCount++
+    const sets = mergeSets(done[e.exercise], local[e.exercise])
+    const nDone = countWorkSets(sets)
+    // 目标组数缺失时按 1 算, 免得进度条分母为 0
+    const nPlan = e.target_sets || 1
+    doneSets += nDone > nPlan ? nPlan : nDone
+    planSets += nPlan
+    const lastSet = sets.length ? sets[sets.length - 1] : null
     out.push({
       exercise: e.exercise,
       target_sets: e.target_sets,
@@ -143,12 +180,16 @@ export function buildDayPayload(cache, weekday, pending) {
       rep_max: e.rep_max,
       rir_min: e.rir_min,
       rir_max: e.rir_max,
+      rest_sec: e.rest_sec,
       max_weight_kg: e.max_weight_kg,
-      done: !!d,
-      done_weight_kg: d ? d.weight_kg : null,
-      done_sets: d ? d.sets : null,
-      done_reps: d ? d.reps : null,
-      done_rir: d ? d.rir : null,
+      // 已记的组: 记录页拿它决定下一组是第几组、预填什么
+      sets: sets,
+      done_sets: nDone,
+      done: nDone > 0,
+      // 最后一组的数值, 下一组照着它预填 —— 多数时候两组是一样的
+      last_weight_kg: lastSet ? lastSet.weight_kg : null,
+      last_reps: lastSet ? lastSet.reps : null,
+      last_rir: lastSet ? lastSet.rir : null,
     })
   }
 
@@ -157,9 +198,30 @@ export function buildDayPayload(cache, weekday, pending) {
     weekday: weekday,
     title: day ? day.title : null,
     exercises: out,
-    done_count: doneCount,
-    total_count: out.length,
+    done_count: doneSets,
+    total_count: planSets,
   }
+}
+
+/**
+ * 服务端已知的组 + 本地队列里的组, 合成一份按组号排好的清单。
+ * 同一组号以本地为准 —— 本地是刚记的, 服务端那份还是上次同步时的。
+ */
+function mergeSets(serverEntry, localSets) {
+  const byIdx = {}
+  const server = serverEntry && serverEntry.sets ? serverEntry.sets : []
+  for (let i = 0; i < server.length; i++) byIdx[server[i].set_index] = server[i]
+  const local = localSets || []
+  for (let i = 0; i < local.length; i++) byIdx[local[i].set_index] = local[i]
+
+  const out = []
+  for (const k in byIdx) {
+    if (Object.prototype.hasOwnProperty.call(byIdx, k)) out.push(byIdx[k])
+  }
+  out.sort(function (a, b) {
+    return a.set_index - b.set_index
+  })
+  return out
 }
 
 /** 缓存存了多少天了; 没缓存返回 -1 */

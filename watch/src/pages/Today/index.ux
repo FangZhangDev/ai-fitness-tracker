@@ -5,7 +5,7 @@
       (versionCode 不变时系统可能不真正覆盖)。
       早期它后面还跟着一个 bootInfo 执行探针, 各屏都稳定后已撤掉。
     -->
-    <text class="ver">v1.2.3</text>
+    <text class="ver">v1.3.0</text>
 
     <!-- ============ 加载中 ============ -->
     <div if="{{ isLoading }}" class="center">
@@ -56,7 +56,7 @@
         >{{ title }}</marquee>
         <text if="{{ titleStatic }}" class="head-title">{{ title }}</text>
       </div>
-      <!-- 进度条: 唯一的强调色, 一眼看出还剩几个 -->
+      <!-- 进度条: 唯一的强调色, 按今天的总组数走, 一眼看出还剩多少 -->
       <div class="bar-bg">
         <div class="bar-fill" style="width: {{ barWidth }}px;"></div>
       </div>
@@ -111,15 +111,18 @@
     return String(Math.round(n * 100) / 100)
   }
 
-  /** 列表第二行: 已完成显示实际做的, 未完成显示计划目标 */
+  /**
+   * 列表第二行。
+   * 已经开练的动作显示「几组/几组 + 最后一组做了多少」——
+   * 组间抬手看表, 第一眼要回答的就是「这动作还剩几组」。
+   * 没开练的显示历史最大重量与计划目标。
+   */
   function buildSubtitle(e) {
     if (e.done) {
-      const w = fmtNum(e.done_weight_kg)
-      const parts = []
-      if (w) parts.push(w + 'kg')
-      if (e.done_sets && e.done_reps) parts.push(e.done_sets + '×' + e.done_reps)
-      else if (e.done_reps) parts.push(e.done_reps + '次')
-      if (e.done_rir !== null && e.done_rir !== undefined) parts.push('RIR' + e.done_rir)
+      const parts = [e.done_sets + '/' + (e.target_sets || e.done_sets) + '组']
+      const w = fmtNum(e.last_weight_kg)
+      if (w) parts.push(w + 'kg' + (e.last_reps ? '×' + e.last_reps : ''))
+      if (e.last_rir !== null && e.last_rir !== undefined) parts.push('RIR' + e.last_rir)
       return parts.join('  ')
     }
     const parts = []
@@ -137,6 +140,18 @@
       parts.push(reps ? e.target_sets + '×' + reps : e.target_sets + '组')
     }
     return parts.join('  ')
+  }
+
+  /**
+   * 圆点三态。用 CSS 画而不是打字符 —— 手表的精简字体不一定收录 ✓ / ○。
+   *   空心   还没开始
+   *   小实心 记了几组但没到目标 (进行中)
+   *   实心   够组数了
+   */
+  function dotClass(e) {
+    if (!e.done_sets) return 'dot'
+    const target = e.target_sets || 1
+    return e.done_sets >= target ? 'dot dot-on' : 'dot dot-half'
   }
 
   export default {
@@ -292,8 +307,10 @@
           const it = list[i]
           it.subtitle = buildSubtitle(it)
           // class 也在这里算好, 模板里不做三元判断
-          it.dotCls = it.done ? 'dot dot-on' : 'dot'
-          it.nameCls = it.done ? 'item-name item-name-done' : 'item-name'
+          it.dotCls = dotClass(it)
+          // 名字置灰只在「这个动作练完了」时才做, 练了两组还灰着会以为不用练了
+          const finished = it.done_sets >= (it.target_sets || 1)
+          it.nameCls = finished ? 'item-name item-name-done' : 'item-name'
         }
 
         // 休息日服务端没有 plan_day, title 是 null。此时退回「周六 · 休息」而不是
@@ -310,7 +327,8 @@
         this.isEmpty = this.totalCount === 0
         this.hasList = !this.isEmpty
         this.exercises = list
-        // 进度条总宽 386px (466 - 左右各 40)
+        // 进度条总宽 386px (466 - 左右各 40)。分子分母都是组数:
+        // 一个动作四组做完两组, 进度条该走一半, 而不是零或整
         this.barWidth = this.totalCount
           ? Math.round((386 * this.doneCount) / this.totalCount)
           : 0
@@ -331,16 +349,21 @@
       screen.awake()
       const e = this.exercises[idx]
       if (!e) return
+      // 接着已记的组往下走: 记了 2 组就从第 3 组开始, 一组没记就从第 1 组
+      const nextSet = (e.done_sets || 0) + 1
       device.push('/pages/Record', {
         exercise: e.exercise,
         workoutDay: this.title,
-        // 预填重量: 已记录过用今天实际值, 否则用历史最大重量, 从没练过则 0
-        weight: fmtNum(e.done ? e.done_weight_kg : e.max_weight_kg) || '0',
-        sets: String(e.done ? e.done_sets || 0 : e.target_sets || e.last_sets || 3),
-        reps: String(e.done ? e.done_reps || 0 : e.rep_min || e.last_reps || 8),
+        setIndex: String(nextSet),
+        targetSets: String(e.target_sets || 0),
+        // 计划里没写休息时长时传 0, 记录页会退回到自己的兜底值
+        restSec: String(e.rest_sec || 0),
+        // 预填: 今天已经练过就沿用上一组, 否则用历史最大重量(从没练过则 0)
+        weight: fmtNum(e.done ? e.last_weight_kg : e.max_weight_kg) || '0',
+        reps: String(e.done ? e.last_reps || 0 : e.rep_min || 8),
         rir: String(
-          e.done && e.done_rir !== null && e.done_rir !== undefined
-            ? e.done_rir
+          e.done && e.last_rir !== null && e.last_rir !== undefined
+            ? e.last_rir
             : e.rir_min !== null && e.rir_min !== undefined
               ? e.rir_min
               : 2
@@ -551,6 +574,12 @@
   .dot-on {
     border-color: #00e5a0;
     background-color: #00e5a0;
+  }
+  /* 进行中: 描边亮起, 中心留白 —— 与"没开始"和"练完了"都能一眼分开 */
+  .dot-half {
+    border-color: #00e5a0;
+    border-width: 8px;
+    background-color: #000000;
   }
   .item-body {
     flex-direction: column;

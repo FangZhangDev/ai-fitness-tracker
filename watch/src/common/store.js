@@ -55,6 +55,14 @@ export function storageDiag() {
   return parts.join(' / ')
 }
 
+/**
+ * 整周缓存的结构版本。
+ * v1.3 把 today.done 从 {动作: {weight,sets,reps,rir}} 改成了
+ * {动作: {done_sets, sets:[每组]}} —— 版本号对不上时直接当作没有缓存重新拉,
+ * 否则新代码读到旧结构会把「已完成」算成 0, 界面看着像记录全丢了。
+ */
+const CACHE_VER = 2
+
 const KEY = {
   TOKEN: 'device_token',
   WEEK: 'week_cache',
@@ -158,10 +166,18 @@ export function clearToken() {
  * 固定一个键、整份覆盖 —— 不按天分键, 否则一年下来会攒出一堆没人读的旧键。
  */
 export function getWeek() {
-  return read(KEY.WEEK)
+  return read(KEY.WEEK).then(function (c) {
+    if (!c) return null
+    if (c.cacheVer !== CACHE_VER) {
+      console.log('[store] 缓存结构是 v' + (c.cacheVer || 1) + ', 当前要 v' + CACHE_VER + ', 丢弃重拉')
+      return null
+    }
+    return c
+  })
 }
 
 export function setWeek(cache) {
+  if (cache) cache.cacheVer = CACHE_VER
   return write(KEY.WEEK, cache)
 }
 
@@ -182,15 +198,24 @@ export function getPending() {
   })
 }
 
-/** 入队; 同一天同一动作只保留最后一次 */
+/**
+ * 入队; 同一天同一动作的同一组只保留最后一次。
+ *
+ * 去重键带上 set_index 是 v1.3 的关键改动 —— 不带的话第 2 组会把第 1 组顶掉,
+ * 一趟离线训练传上去只剩最后一组。
+ * 同一组重复入队是正常的: 记完先传一次, 休息结束再带着 rest_sec 传一次,
+ * 后者覆盖前者, 服务端只收到一条完整的。
+ */
 export function enqueue(log) {
   return getPending().then(function (list) {
     const next = []
     for (let i = 0; i < list.length; i++) {
       const it = list[i]
-      if (!(it.exercise === log.exercise && it.date === log.date)) {
-        next.push(it)
-      }
+      const same =
+        it.exercise === log.exercise &&
+        it.date === log.date &&
+        it.set_index === log.set_index
+      if (!same) next.push(it)
     }
     next.push(log)
     return write(KEY.PENDING, next).then(function () {
