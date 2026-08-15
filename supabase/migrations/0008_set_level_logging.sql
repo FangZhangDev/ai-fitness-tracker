@@ -224,7 +224,10 @@ left join lateral (
 -- 6.3 一次训练里某个动作的汇总。
 --     网页列表、力量曲线、AI 分析都读它 —— 按组存下来之后, 直接画原始行会把
 --     一天的 4 组画成 4 个重叠的点, 且喂给 AI 的行数翻好几倍。
-create or replace view public.v_exercise_sessions
+-- 先 drop 再 create: create or replace view 不允许在中间插列, 这个视图以后大概率
+-- 还会加字段, 留着 replace 早晚会让「可重复执行」这条断掉
+drop view if exists public.v_exercise_sessions;
+create view public.v_exercise_sessions
 with (security_invoker = true) as
 select
   w.user_id,
@@ -234,6 +237,10 @@ select
   count(*) filter (where not w.is_warmup)::integer              as sets,
   count(*) filter (where w.is_warmup)::integer                  as warmup_sets,
   max(w.weight_kg) filter (where not w.is_warmup)               as top_weight_kg,
+  -- 这次训练里最好的一组折算成 1RM (Epley)。力量曲线画的是它 ——
+  -- 只看最大重量的话, 同样 60kg 做 5 次和做 10 次看不出区别
+  max(w.weight_kg * (1 + w.reps::numeric / 30))
+    filter (where not w.is_warmup and w.reps > 0)               as best_1rm_kg,
   sum(w.reps) filter (where not w.is_warmup)::integer           as total_reps,
   sum(w.weight_kg * w.reps) filter (where not w.is_warmup)      as volume_kg,
   round(avg(w.rir) filter (where not w.is_warmup), 1)           as avg_rir,
