@@ -11,7 +11,7 @@ import {
 import { todayISO, fmtDateLong } from "@/lib/utils/date";
 import { r1 } from "@/lib/utils/pr";
 import type { MealLog, MealTemplate } from "@/lib/types/database";
-import { SLOT_LABEL, type MealSlot, type NutritionItem } from "@/lib/ai/nutrition";
+import { SLOT_LABEL, type MealSlot, type NutritionItem } from "@/lib/ai/nutrition-types";
 import { Card, Field, EmptyState, Badge, MEAL_TYPE_LABEL, runAction } from "@/components/ui";
 
 /**

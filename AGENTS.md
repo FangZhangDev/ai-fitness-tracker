@@ -75,9 +75,22 @@ Vercel 项目里已配好 5 个：`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPA
 `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL`。
 
 换 AI 提供商只改后 3 个，代码零改动——全项目的 AI 调用只穿过 `lib/ai/client.ts`
-一个文件。唯一要留意的是那里写死了 `response_format: {type:"json_object"}` 与
-`temperature: 0.2`：DeepSeek 与 OpenAI 都支持，但部分本地/国产模型不支持前者，
-推理类模型（o 系列、deepseek-reasoner）会拒绝后者。
+一个文件，配置解析集中在那里的 `resolveAiConfig()`。
+
+**线上换供应商优先走设置页（`/settings`）**：那里保存的激活预设（`ai_presets` 表，
+0011 迁移）优先于环境变量，改完即生效，不用重新部署。环境变量是兜底：预设删光或
+都没激活时自动回落，所以上面 3+3 个变量仍要配一份能用的。
+
+另有 3 个**可选**开关，不配就是全开（OpenAI / DeepSeek 都支持），换模型撞墙时才需要动：
+
+| 变量 | 关掉它的场景 |
+|---|---|
+| `AI_JSON_MODE=0` | 模型不支持 `response_format: {type:"json_object"}`（部分本地/国产模型）。关掉后改为在 prompt 里要求只输出 JSON，并对 ```json 代码块做兜底解析 |
+| `AI_TEMPERATURE_SUPPORTED=0` | 推理类模型（o 系列、deepseek-reasoner）会拒绝 `temperature` |
+| `AI_TOOLS_SUPPORTED=0` | 模型不支持 function calling。AI 私教 chatbox 依赖它，关掉等于停用那个功能 |
+
+> 早先这两条限制是写死在代码里、只在这份文档里提醒的，换模型必然踩。现在做成
+> 配置项，但**默认值仍是全开**，所以行为与以前一致。
 
 ## 二、手表应用 → rpk（AI 做不了，只能提醒人做）
 

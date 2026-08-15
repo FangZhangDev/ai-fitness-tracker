@@ -19,6 +19,7 @@ const SECONDARY = [
   { href: "/data", label: "数据管理" },
   { href: "/profile", label: "个人资料" },
   { href: "/export", label: "数据导出" },
+  { href: "/settings", label: "设置" },
 ];
 
 export function Nav() {

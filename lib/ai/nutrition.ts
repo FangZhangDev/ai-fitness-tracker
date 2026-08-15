@@ -2,39 +2,14 @@
 import { chatJSON } from "@/lib/ai/client";
 import type { MealType } from "@/lib/types/database";
 
-/** 餐次槽位: 全天描述里通常写着「早饭：… 午饭：…」, 据此把每项食物归位 */
-export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack" | "other";
+// 类型与常量在 nutrition-types.ts (客户端也要用, 不能跟 AI 调用混在一个模块里,
+// 否则打包时整条服务端链路会被拖进浏览器包)
+import { SLOT_LABEL, type MealSlot, type NutritionItem, type NutritionEstimate } from "@/lib/ai/nutrition-types";
 
-export const SLOT_LABEL: Record<MealSlot, string> = {
-  breakfast: "早餐",
-  lunch: "午餐",
-  dinner: "晚餐",
-  snack: "加餐",
-  other: "其它",
-};
+// 服务端调用方仍可从本文件拿类型
+export type { MealSlot, NutritionItem, NutritionEstimate } from "@/lib/ai/nutrition-types";
 
 const SLOTS = Object.keys(SLOT_LABEL) as MealSlot[];
-
-/** 逐项明细里的一条食物 */
-export type NutritionItem = {
-  name: string;
-  /** 归属餐次; 描述里没写清就是 other(如单独列在最后的蛋白粉、补剂) */
-  slot: MealSlot;
-  /** AI 假设的份量, 如 "150g (3个)" —— 估得离谱时一眼能看出是份量假设错了 */
-  grams: string;
-  calories: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-};
-
-export type NutritionEstimate = {
-  calories: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-  items: NutritionItem[];
-};
 
 const MEAL_LABEL: Record<MealType, string> = {
   all_day: "全天(一整天所有进食)",

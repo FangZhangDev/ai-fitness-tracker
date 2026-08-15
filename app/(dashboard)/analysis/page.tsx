@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/utils/server";
 import { SectionTitle } from "@/components/ui";
 import AnalysisRunner from "@/components/analysis-runner";
+import CoachChat from "@/components/coach-chat";
 
 export const dynamic = "force-dynamic";
 // AI 综合分析是同步 Server Action, 实测 7 天数据需 5-7s, 分析区间最长可选 90 天,
@@ -18,9 +19,16 @@ export default async function AnalysisPage() {
     .maybeSingle();
 
   return (
-    <div className="space-y-4">
-      <SectionTitle title="AI 健身分析" desc="综合身体、饮食、训练数据的智能评估" />
-      <AnalysisRunner latest={data} />
+    <div className="space-y-6">
+      <div>
+        <SectionTitle title="AI 私教" desc="能读到你全部数据，也能直接改训练计划" />
+        <CoachChat />
+      </div>
+
+      <div>
+        <SectionTitle title="AI 健身分析" desc="综合身体、饮食、训练数据的智能评估" />
+        <AnalysisRunner latest={data} />
+      </div>
     </div>
   );
 }

@@ -375,6 +375,57 @@ export type WatchTodayPayload = {
   total_count: number;
 };
 
+// ---- AI 教练改动日志 (0010) ----
+/**
+ * AI 每改一行留下的行级快照, 供按对话轮次撤销。
+ * before 为空 = 这行是新增的; after 为空 = 这行被删了; 都有 = 被改过。
+ */
+/**
+ * 快照存的是「某张表的一整行」, 不是任意 JSON。用 Record 而不是 Json 表达,
+ * 是因为撤销时要把它整个塞回 upsert —— Json 那个联合类型 (可能是数组、
+ * 数字、字符串) 在那里根本用不了。
+ */
+export type RowSnapshot = Record<string, unknown>;
+
+export type AgentMutation = {
+  id: string;
+  user_id: string;
+  /** 一次对话轮次; 撤销以它为单位 */
+  turn_id: string;
+  /** 轮次内序号, 撤销时倒序重放 */
+  seq: number;
+  table_name: "plan_days" | "plan_exercises" | "workout_plans";
+  row_id: string;
+  before: RowSnapshot | null;
+  after: RowSnapshot | null;
+  undone_at: string | null;
+  created_at: string;
+};
+
+export type AgentMutationInsert = Omit<AgentMutation, "id" | "created_at" | "undone_at"> & {
+  undone_at?: string | null;
+};
+
+// ---- AI 供应商预设 (0011) ----
+/** 设置页里保存的一套 AI 配置; is_active 的那套生效, 优先于环境变量 */
+export type AiPreset = {
+  id: string;
+  user_id: string;
+  name: string;
+  base_url: string;
+  /** 明文只在服务端与数据库里流转, 给前端的永远是掩码(见 actions/settings.ts) */
+  api_key: string;
+  model: string;
+  json_mode: boolean;
+  temperature_supported: boolean;
+  tools_supported: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AiPresetInsert = Omit<AiPreset, "id" | "created_at" | "updated_at">;
+
 // ---- Supabase Database schema 映射 (用于 createClient 泛型) ----
 export type Database = {
   public: {
@@ -390,6 +441,8 @@ export type Database = {
       plan_exercises: { Row: PlanExercise; Insert: Omit<PlanExercise, "id" | "created_at" | "updated_at">; Update: PlanExerciseUpdate; Relationships: [] };
       watch_devices: { Row: WatchDeviceRow; Insert: Omit<WatchDeviceRow, "id" | "created_at">; Update: Partial<WatchDeviceRow>; Relationships: [] };
       watch_pairing_codes: { Row: WatchPairingCodeRow; Insert: WatchPairingCodeRow; Update: Partial<WatchPairingCodeRow>; Relationships: [] };
+      agent_mutations: { Row: AgentMutation; Insert: AgentMutationInsert; Update: Partial<AgentMutation>; Relationships: [] };
+      ai_presets: { Row: AiPreset; Insert: AiPresetInsert; Update: Partial<AiPreset>; Relationships: [] };
     };
     Views: {
       v_exercise_pr: { Row: ExercisePR; Relationships: [] };

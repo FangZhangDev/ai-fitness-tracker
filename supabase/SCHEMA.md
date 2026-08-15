@@ -31,6 +31,19 @@
 
 历史数据在 0008 里按原 `sets` 展开（4 组 → 4 行），逐日容量与迁移前完全一致，原表备份在 `workout_logs_backup_0008`。
 
+### agent_mutations — AI 教练改动日志（0010）
+AI 私教每改一行留一条行级快照，供按对话轮次一键撤销。`before` 为空表示这行是新增的，`after` 为空表示这行被删了，两者都有就是被改过。
+
+撤销时按 `seq` **倒序**重放：同一轮里先建训练日再加动作，倒着退才不撞外键；删除方向记账时子行在前、父行在后，倒序重放就成了先插回父行再插回子行。插回去连 `id` 一起还原——`plan_exercises.id` 被手表端引用着，换新 id 等于把引用悄悄弄断。
+
+⚠️ `plan_days` 删除会级联带走 `plan_exercises`，级联不经过应用层、不会自己留记录，所以删训练日必须先把子行逐条抄进来。见 `lib/actions/agent.ts`。
+
+### ai_presets — AI 供应商预设（0011）
+设置页保存的多套 AI 配置（含密钥），每用户至多一套激活——部分唯一索引 `uq_ai_presets_one_active` 在数据库层强制，两套同时“生效”这种静默错误不可能发生。生效优先级：激活的预设 > 环境变量（见 `lib/ai/client.ts` 的 `resolveAiConfig`，每次 AI 请求实时读取，切换立即生效）。
+
+激活切换的顺序是**先撤旧再立新**（`lib/actions/settings.ts`），顺序反了会撞上面的索引。密钥明文存储但 RLS 隔离，且应用层永不把完整密钥回显给前端（编辑时留空 = 保留原值）。
+
+
 ### ai_analyses — AI 综合分析报告留档
 每次"分析最近N天"存一条，`report` 为结构化 JSON (见 `lib/types/database.ts` 的 `AiAnalysisReport`)。
 
