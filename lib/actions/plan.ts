@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/utils/server";
 import { parsePlanText, generatePlan } from "@/lib/ai/plan";
+import { WEEKDAY_LABEL } from "@/lib/types/database";
 import type { ParsedPlan, Weekday, WorkoutLogInsert } from "@/lib/types/database";
 
 export type ActionResult = { error?: string };
@@ -353,18 +354,92 @@ export async function movePlanExercise(formData: FormData): Promise<ActionResult
   return {};
 }
 
+/** 校验周几入参; 返回 null 表示不合法 */
+function weekday(v: FormDataEntryValue | null): Weekday | null {
+  const n = int(v);
+  return n !== null && n >= 1 && n <= 7 ? (n as Weekday) : null;
+}
+
+/**
+ * 0002 给 plan_days 加了 unique (plan_id, weekday) —— 一套计划里同一个周几只能有一条。
+ * 撞上时数据库回 23505, 直接把原始报错甩给用户看不懂, 这里翻译成人话。
+ */
+function dayConflictMessage(code: string | undefined, w: Weekday): string | null {
+  return code === "23505" ? `这套计划的${WEEKDAY_LABEL[w]}已经有训练日了` : null;
+}
+
+/** 改训练日: 主题, 以及排到周几 */
 export async function updatePlanDay(prev: unknown, formData: FormData): Promise<ActionResult> {
   const { supabase } = await getCurrentUser();
   const id = str(formData.get("id"));
   const title = str(formData.get("title"));
   if (!id || !title) return { error: "请填写训练日主题" };
-  const { error } = await supabase
+
+  // weekday 是可选字段: 没传就只改主题, 别把已有的周几冲掉
+  const patch: { title: string; weekday?: Weekday } = { title: title.slice(0, 200) };
+  if (formData.has("weekday")) {
+    const w = weekday(formData.get("weekday"));
+    if (w === null) return { error: "请选择周几" };
+    patch.weekday = w;
+  }
+
+  const { error } = await supabase.from("plan_days").update(patch).eq("id", id);
+  if (error) {
+    return {
+      error:
+        (patch.weekday && dayConflictMessage(error.code, patch.weekday)) || error.message,
+    };
+  }
+  revalidatePath("/plan");
+  revalidatePath("/workouts");
+  revalidatePath("/");
+  return {};
+}
+
+/** 给计划加一个训练日 (比如原来只练周一三五, 现在想加个周六) */
+export async function addPlanDay(prev: unknown, formData: FormData): Promise<ActionResult> {
+  const { supabase, userId } = await getCurrentUser();
+  const planId = str(formData.get("plan_id"));
+  const w = weekday(formData.get("weekday"));
+  const title = str(formData.get("title"));
+  if (!planId) return { error: "缺少计划 ID" };
+  if (w === null) return { error: "请选择周几" };
+  if (!title) return { error: "请填写训练日主题" };
+
+  // 追加到末尾 (页面按 weekday 排序展示, sort_order 只是保持与 savePlan 一致)
+  const { data: last } = await supabase
     .from("plan_days")
-    .update({ title: title.slice(0, 200) })
-    .eq("id", id);
+    .select("sort_order")
+    .eq("plan_id", planId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error } = await supabase.from("plan_days").insert({
+    plan_id: planId,
+    user_id: userId,
+    weekday: w,
+    title: title.slice(0, 200),
+    sort_order: (last?.sort_order ?? -1) + 1,
+  });
+  if (error) return { error: dayConflictMessage(error.code, w) || error.message };
+
+  revalidatePath("/plan");
+  revalidatePath("/workouts");
+  revalidatePath("/");
+  return {};
+}
+
+/** 删除训练日 (它下面的动作会跟着级联删掉; 已记录的 workout_logs 不受影响) */
+export async function deletePlanDay(formData: FormData): Promise<ActionResult> {
+  const { supabase } = await getCurrentUser();
+  const id = str(formData.get("id"));
+  if (!id) return { error: "缺少训练日 ID" };
+  const { error } = await supabase.from("plan_days").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/plan");
   revalidatePath("/workouts");
+  revalidatePath("/");
   return {};
 }
 

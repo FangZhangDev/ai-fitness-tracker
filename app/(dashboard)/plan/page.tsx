@@ -75,7 +75,7 @@ export default async function PlanPage() {
             title={`编辑「${active.name}」`}
             desc="改坏了不好恢复的话，建议先在上面「复制」一份再改副本。"
           />
-          <PlanEditor days={activeDays} exercisesByDay={exercisesByDay} />
+          <PlanEditor planId={active.id} days={activeDays} exercisesByDay={exercisesByDay} />
         </div>
       )}
     </div>

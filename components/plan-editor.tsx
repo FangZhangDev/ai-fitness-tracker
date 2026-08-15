@@ -7,75 +7,218 @@ import {
   deletePlanExercise,
   movePlanExercise,
   updatePlanDay,
+  addPlanDay,
+  deletePlanDay,
 } from "@/lib/actions/plan";
 import {
   WEEKDAY_LABEL,
   type PlanDay,
   type PlanExercise,
+  type Weekday,
 } from "@/lib/types/database";
 import { Card, Field, runAction } from "@/components/ui";
 import { fmtRange, fmtSetsReps } from "@/components/plan-creator";
 
-/** 编辑启用中计划的内容: 改动作参数、增删、调顺序、改训练日主题 */
+const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as Weekday[];
+
+/** 编辑启用中计划的内容: 增删训练日、改周几与主题、动作的增删改与排序 */
 export default function PlanEditor({
+  planId,
   days,
   exercisesByDay,
 }: {
+  planId: string;
   days: PlanDay[];
   exercisesByDay: Record<string, PlanExercise[]>;
 }) {
-  if (!days.length) {
+  // 一套计划里同一个周几只能有一条 (0002 的 unique 约束), 已占用的不给选
+  const used = new Set(days.map((d) => d.weekday));
+
+  return (
+    <div className="space-y-3">
+      {days.length === 0 && (
+        <Card className="p-4 text-sm text-neutral-500">
+          这套计划还没有训练日，先在下面加一个。
+        </Card>
+      )}
+      {days.map((d) => (
+        <DayBlock
+          key={d.id}
+          day={d}
+          exercises={exercisesByDay[d.id] ?? []}
+          used={used}
+        />
+      ))}
+      <AddDayCard planId={planId} used={used} />
+    </div>
+  );
+}
+
+/** 新增训练日: 选周几 + 起个主题, 建完再往里加动作 */
+function AddDayCard({ planId, used }: { planId: string; used: Set<Weekday> }) {
+  const [open, setOpen] = useState(false);
+  const free = WEEKDAYS.filter((w) => !used.has(w));
+  const [state, formAction, pending] = useActionState(
+    async (prev: unknown, fd: FormData) => {
+      const res = await addPlanDay(prev, fd);
+      if (!res.error) setOpen(false);
+      return res;
+    },
+    undefined,
+  );
+
+  if (!free.length) {
     return (
-      <Card className="p-4 text-sm text-neutral-500">
-        这套计划还没有训练日。
+      <Card className="p-3 text-xs text-neutral-400">
+        一周七天都排满了，想换内容就直接改上面的训练日。
+      </Card>
+    );
+  }
+
+  if (!open) {
+    return (
+      <Card className="p-3">
+        <button onClick={() => setOpen(true)} className="btn btn-ghost px-2 py-1 text-xs">
+          + 添加训练日
+        </button>
       </Card>
     );
   }
 
   return (
-    <div className="space-y-3">
-      {days.map((d) => (
-        <DayBlock key={d.id} day={d} exercises={exercisesByDay[d.id] ?? []} />
-      ))}
-    </div>
+    <Card className="p-3">
+      <form action={formAction} className="space-y-2">
+        <input type="hidden" name="plan_id" value={planId} />
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+          <Field label="周几">
+            <select name="weekday" defaultValue={free[0]} className="input">
+              {free.map((w) => (
+                <option key={w} value={w}>
+                  {WEEKDAY_LABEL[w]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="md:col-span-3">
+            <Field label="主题" hint="例如「下肢，股四 + 臀」；只是个名字，记录时会回填到训练日">
+              <input name="title" className="input" placeholder="下肢 A" required autoFocus />
+            </Field>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button disabled={pending} className="btn btn-primary px-3 py-1 text-xs">
+            {pending ? "添加中…" : "添加"}
+          </button>
+          <button type="button" onClick={() => setOpen(false)} className="btn btn-ghost px-3 py-1 text-xs">
+            取消
+          </button>
+          {state?.error && <span className="text-xs text-red-600">{state.error}</span>}
+        </div>
+      </form>
+    </Card>
   );
 }
 
-function DayBlock({ day, exercises }: { day: PlanDay; exercises: PlanExercise[] }) {
+function DayBlock({
+  day,
+  exercises,
+  used,
+}: {
+  day: PlanDay;
+  exercises: PlanExercise[];
+  used: Set<Weekday>;
+}) {
   const [editingTitle, setEditingTitle] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [, titleAction] = useActionState(updatePlanDay, undefined);
+  const [titleState, titleAction, titlePending] = useActionState(
+    async (prev: unknown, fd: FormData) => {
+      const res = await updatePlanDay(prev, fd);
+      if (!res.error) setEditingTitle(false);
+      return res;
+    },
+    undefined,
+  );
+  // 别的训练日占掉的周几不能选, 自己当前这天要留着
+  const selectable = WEEKDAYS.filter((w) => w === day.weekday || !used.has(w));
 
   return (
     <Card>
       <div className="flex flex-wrap items-center gap-2 border-b border-neutral-100 px-3 py-2 dark:border-neutral-800">
-        <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-sm font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-          {WEEKDAY_LABEL[day.weekday]}
-        </span>
         {editingTitle ? (
-          <form
-            action={(fd) => {
-              titleAction(fd);
-              setEditingTitle(false);
-            }}
-            className="flex flex-1 gap-2"
-          >
+          <form action={titleAction} className="flex flex-1 flex-wrap items-center gap-2">
             <input type="hidden" name="id" value={day.id} />
-            <input name="title" defaultValue={day.title} className="input flex-1" autoFocus />
-            <button className="btn btn-primary px-3 py-1 text-xs">保存</button>
+            <select name="weekday" defaultValue={day.weekday} className="input w-auto">
+              {selectable.map((w) => (
+                <option key={w} value={w}>
+                  {WEEKDAY_LABEL[w]}
+                </option>
+              ))}
+            </select>
+            <input
+              name="title"
+              defaultValue={day.title}
+              className="input min-w-40 flex-1"
+              autoFocus
+            />
+            <button disabled={titlePending} className="btn btn-primary px-3 py-1 text-xs">
+              {titlePending ? "保存中…" : "保存"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditingTitle(false)}
+              className="btn btn-ghost px-3 py-1 text-xs"
+            >
+              取消
+            </button>
+            {titleState?.error && (
+              <span className="text-xs text-red-600">{titleState.error}</span>
+            )}
           </form>
         ) : (
           <>
+            <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-sm font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+              {WEEKDAY_LABEL[day.weekday]}
+            </span>
             <span className="text-sm text-neutral-600 dark:text-neutral-300">{day.title}</span>
             <button
               onClick={() => setEditingTitle(true)}
               className="btn btn-ghost px-2 py-0.5 text-xs"
             >
-              改主题
+              改周几/主题
             </button>
+            <span className="ml-auto text-xs text-neutral-400">{exercises.length} 个动作</span>
+            {confirmDelete ? (
+              <form
+                action={async (fd) => {
+                  await runAction(deletePlanDay(fd));
+                  setConfirmDelete(false);
+                }}
+                className="flex items-center gap-1"
+              >
+                <input type="hidden" name="id" value={day.id} />
+                <span className="text-xs text-neutral-500">
+                  连同 {exercises.length} 个动作一起删？
+                </span>
+                <button className="btn btn-danger px-2 py-0.5 text-xs">删除</button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="btn btn-ghost px-2 py-0.5 text-xs"
+                >
+                  取消
+                </button>
+              </form>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="btn btn-ghost px-2 py-0.5 text-xs text-red-600"
+              >
+                删除本日
+              </button>
+            )}
           </>
         )}
-        <span className="ml-auto text-xs text-neutral-400">{exercises.length} 个动作</span>
       </div>
 
       <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
