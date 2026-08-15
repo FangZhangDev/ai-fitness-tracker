@@ -7,7 +7,7 @@
         2. 若它显示了而下面各屏都空白, 即可断定是条件渲染失效, 而非白屏崩溃
       功能稳定后可删。
     -->
-    <text class="ver">v1.2.1 {{ bootInfo }}</text>
+    <text class="ver">v1.2.2 {{ bootInfo }}</text>
 
     <!-- ============ 加载中 ============ -->
     <div if="{{ isLoading }}" class="center">
@@ -303,7 +303,12 @@
           it.nameCls = it.done ? 'item-name item-name-done' : 'item-name'
         }
 
-        this.title = payload.title || '今天'
+        // 休息日服务端没有 plan_day, title 是 null。此时退回「周六 · 休息」而不是
+        // 笼统的「今天」—— 长按切到别的日子时也能一眼看出在看哪天
+        const wd = payload.weekday
+        this.title =
+          payload.title ||
+          (wd >= 1 && wd <= 7 ? WEEK_LABEL[wd - 1] + ' · 休息' : '今天')
         // 去掉进度数字后标题独占 386px, 32px 字号约容 12 个汉字
         this.titleScroll = this.title.length > 12
         this.titleStatic = !this.titleScroll
@@ -469,16 +474,21 @@
   .header {
     flex-direction: row;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     width: 386px;
     margin-left: 40px;
     margin-top: 22px;
     height: 48px;
   }
+  /*
+    flex: 1 让标题占满 386px 那一行, 所以必须显式 text-align: center ——
+    否则短标题(休息日的「周六 · 休息」)会贴在这个满宽盒子的左边, 看着像没居中。
+  */
   .head-title {
     font-size: 32px;
     color: #ffffff;
     lines: 1;
+    text-align: center;
     text-overflow: ellipsis;
     flex: 1;
   }
@@ -488,6 +498,7 @@
     height: 44px;
     font-size: 32px;
     color: #ffffff;
+    text-align: center;
   }
 
   .bar-bg {
