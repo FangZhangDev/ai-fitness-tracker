@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Badge, runAction } from "@/components/ui";
-import { undoTurn, confirmDelete } from "@/lib/actions/agent";
+import { undoTurn, confirmDelete, latestUndoableTurn } from "@/lib/actions/agent";
 import { toast } from "@/lib/utils/toast";
 
 type PendingDelete = {
@@ -86,14 +86,73 @@ const SUGGESTIONS = [
   "我最近深蹲一直上不去，有什么建议",
 ];
 
+// ---------------------------------------------------------------------------
+// 会话持久化 (localStorage)
+//
+// 消息只活在这个组件的 state 里, 离开分析页再回来就是一场新对话 --
+// 撤销条跟着消失, 哪怕服务器上那轮改动根本还没撤。所以把消息列表
+// (连同 turnId/撤销状态/删除确认) 存进 localStorage, 挂载时恢复。
+//
+// 只存本设备: 跨设备的对话同步要建表(二期), 这里先把「来回导航就丢」
+// 这个最高频的坑填掉。
+// ---------------------------------------------------------------------------
+const HISTORY_KEY = "coach-messages-v1";
+/** 上限防无限膨胀: 撤销条只挂在最后几条上, 更早的消息没有关键状态 */
+const HISTORY_MAX = 60;
+
 export default function CoachChat() {
   const router = useRouter();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [status, setStatus] = useState("");
+  /** 服务器上最近一轮未撤销的改动; 不在当前消息列表里才显示恢复条 */
+  const [recovered, setRecovered] = useState<Awaited<ReturnType<typeof latestUndoableTurn>>>(null);
   const canWrite = useSyncExternalStore(subscribePref, readPref, () => false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 首帧(恢复完成前)不落盘, 否则空数组会把刚存的历史覆盖掉
+  const hydrated = useRef(false);
+  // msgs 的最新引用, 供挂载 effect 里的异步回调读到恢复后的消息
+  const msgsRef = useRef(msgs);
+
+  // 挂载: 恢复本地会话 + 问服务器还有没有没撤的轮次
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as Msg[];
+        if (Array.isArray(saved) && saved.length) {
+          // 流式中断会留下一条空 assistant 消息, 恢复时丢掉
+          //
+          // 豁免 set-state-in-effect: 「挂载时从 localStorage 恢复一次」没有
+          // 对应的订阅源, useSyncExternalStore 不适用(SSR 快照与客户端首帧
+          // 必须一致, 而这里恰恰要不一致); 也无法放进 useState 初始化器 --
+          // 那会在服务端渲染时炸掉。多出的一次渲染只发生在挂载时。
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setMsgs(saved.filter((m) => m.role === "user" || m.content));
+        }
+      }
+    } catch {
+      // 历史坏了就当没有, 不影响新对话
+    }
+    hydrated.current = true;
+
+    latestUndoableTurn().then((t) => {
+      // 本轮已在消息列表里有撤销条的话, 恢复条就多余了
+      setRecovered(t && msgsRef.current.some((m) => m.turnId === t.turnId) ? null : t);
+    });
+  }, []);
+
+  useEffect(() => {
+    msgsRef.current = msgs;
+    if (hydrated.current && !pending) {
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(msgs.slice(-HISTORY_MAX)));
+      } catch {
+        // 存储满了等场景: 静默放弃, 不打断聊天
+      }
+    }
+  }, [msgs, pending]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -173,6 +232,27 @@ export default function CoachChat() {
     }
   }
 
+  /** 撤销恢复条上的那轮 -- 不在消息列表里, 撤完把条收掉即可 */
+  async function onUndoRecovered(turnId: string) {
+    const fd = new FormData();
+    fd.set("turn_id", turnId);
+    const res = await runAction(undoTurn(fd));
+    if (!res.error) {
+      setRecovered(null);
+      toast("已撤销这轮改动", "success");
+      router.refresh();
+    }
+  }
+
+  function clearChat() {
+    setMsgs([]);
+    try {
+      localStorage.removeItem(HISTORY_KEY);
+    } catch {
+      // 忽略
+    }
+  }
+
   async function onConfirmDelete(d: PendingDelete, idx: number) {
     const fd = new FormData();
     fd.set("kind", d.kind);
@@ -201,6 +281,21 @@ export default function CoachChat() {
     <Card className="flex h-[32rem] flex-col overflow-hidden">
       {/* 消息区 */}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+        {/* 服务器上还有没撤的轮次, 但对应消息不在本会话里(刷新/换设备/清空过) */}
+        {recovered && (
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs dark:border-emerald-900 dark:bg-emerald-950/50">
+            <span className="flex-1 text-emerald-700 dark:text-emerald-300">
+              上次 AI 改了 {recovered.mutationCount} 处，还没有撤销
+            </span>
+            <button
+              onClick={() => onUndoRecovered(recovered.turnId)}
+              className="rounded-md px-2 py-1 font-medium text-emerald-700 transition hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900"
+            >
+              撤销
+            </button>
+          </div>
+        )}
+
         {msgs.length === 0 && (
           <div className="py-6 text-center">
             <div className="text-sm font-medium text-neutral-600 dark:text-neutral-300">
@@ -338,6 +433,14 @@ export default function CoachChat() {
             <Badge color="amber">可写</Badge>
           ) : (
             <Badge color="neutral">只读</Badge>
+          )}
+          {msgs.length > 0 && !pending && (
+            <button
+              onClick={clearChat}
+              className="text-[11px] text-neutral-400 underline-offset-2 transition hover:text-neutral-600 hover:underline dark:hover:text-neutral-300"
+            >
+              清空对话
+            </button>
           )}
           <span className="ml-auto text-[11px] text-neutral-400">
             {canWrite ? "改动可一键撤销，删除仍需你确认" : "AI 只能看和建议，不会动数据"}

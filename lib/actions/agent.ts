@@ -81,6 +81,40 @@ export async function undoTurn(formData: FormData): Promise<ActionResult> {
 }
 
 /**
+ * 最近一轮还没撤销的 AI 改动。
+ *
+ * 撤销入口不应该只活在聊天框里: 会话是客户端状态, 刷新/换设备就没了,
+ * 但 turn_id 和快照一直在库上。chatbox 挂载时调这个, 把撤销条恢复出来 --
+ * 哪怕对话丢了, 「撤回 AI 上一轮改动」的入口永远在。
+ */
+export async function latestUndoableTurn(): Promise<{
+  turnId: string;
+  mutationCount: number;
+  createdAt: string;
+} | null> {
+  const { supabase, userId } = await getCurrentUser();
+
+  const { data: latest } = await supabase
+    .from("agent_mutations")
+    .select("turn_id, created_at")
+    .eq("user_id", userId)
+    .is("undone_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const turnId = latest?.[0]?.turn_id;
+  if (!turnId) return null;
+
+  const { count } = await supabase
+    .from("agent_mutations")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("turn_id", turnId)
+    .is("undone_at", null);
+
+  return { turnId, mutationCount: count ?? 0, createdAt: latest[0].created_at };
+}
+
+/**
  * 执行一条被挂起的删除 (用户在确认卡片上点了确认)。
  *
  * 删除同样记账, 所以删完照样能撤销 —— 确认只是多一道心理关卡,
