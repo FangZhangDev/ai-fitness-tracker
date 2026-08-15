@@ -55,7 +55,6 @@
       <div class="rest-btn" onclick="finishRest">
         <text class="rest-btn-text">跳过</text>
       </div>
-      <text class="rest-tip">转表冠可加减 15 秒</text>
     </div>
   </div>
 </template>
@@ -77,10 +76,8 @@
     { key: 'rir', label: 'RIR', unit: '' },
   ]
 
-  /** 计划里没写休息时长时用它 (秒) */
+  /** 计划里没写休息时长时用它 (秒) —— 时长在网页的计划里改, 手表只管倒数 */
   const REST_FALLBACK = 90
-  /** 表冠在休息页一格加减多少秒 */
-  const REST_STEP = 15
 
   function fmt(n) {
     return String(Math.round(n * 100) / 100)
@@ -209,13 +206,9 @@
       const dir = rotary.feed(e)
       if (!dir) return
 
-      // 休息页: 表冠加减剩余时间, 觉得没歇够就多转两下
-      if (this.isRest) {
-        const left = Math.max(this.secLeft() + dir * REST_STEP, 0)
-        this.restEndAt = Date.now() + left * 1000
-        this.tickRest()
-        return
-      }
+      // 休息页不调任何值: 时长在网页的计划里设, 表上转它只会把已经定好的
+      // 节奏搞乱。歇够了就点「跳过」, 没歇够就等着。
+      if (this.isRest) return
 
       const key = FIELDS[this.fieldIdx].key
       const step = CONFIG.STEP[key]
@@ -533,12 +526,5 @@
   .rest-btn-text {
     font-size: 28px;
     color: #ffffff;
-  }
-  .rest-tip {
-    width: 466px;
-    margin-top: 14px;
-    font-size: 20px;
-    color: #48484a;
-    text-align: center;
   }
 </style>

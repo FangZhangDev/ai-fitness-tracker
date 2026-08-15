@@ -129,7 +129,7 @@ function ExerciseRow({
         {ex.rir_min !== null && (
           <span className="text-neutral-400">RIR {fmtRange(ex.rir_min, ex.rir_max)}</span>
         )}
-        {ex.rest && <span className="text-neutral-400">休息 {ex.rest}</span>}
+        {ex.rest_sec && <span className="text-neutral-400">休息 {ex.rest_sec}s</span>}
         {ex.equipment && <span className="text-neutral-400">· {ex.equipment}</span>}
 
         <div className="ml-auto flex gap-1">
@@ -200,11 +200,8 @@ function ExerciseForm({
         <Field label="次数上限">
           <input name="rep_max" type="number" min={0} max={100} defaultValue={ex?.rep_max ?? ""} className="input" />
         </Field>
-        <Field label="休息">
-          <input name="rest" defaultValue={ex?.rest ?? ""} className="input" placeholder="2-3分钟" />
-        </Field>
-        {/* 手表的组间倒计时读这个数; 留空则按左边那行文字解析, 再解析不出就用 90 秒 */}
-        <Field label="休息(秒)" hint="手表组间倒计时用；留空按左边的文字自动解析">
+        {/* 手表的组间倒计时直接读它; 留空则手表按 90 秒兜底 */}
+        <Field label="休息(秒)" hint="手表组间倒计时用；留空手表按 90 秒算">
           <input
             name="rest_sec"
             type="number"

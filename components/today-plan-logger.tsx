@@ -142,7 +142,7 @@ function ExerciseRow({ e, last }: { e: PlanExercise; last?: ExerciseLast }) {
         <span className="text-xs text-neutral-500">
           目标 {fmtSetsReps(e)}
           {e.rir_min !== null && ` · RIR ${fmtRange(e.rir_min, e.rir_max)}`}
-          {e.rest && ` · 休息 ${e.rest}`}
+          {e.rest_sec && ` · 休息 ${e.rest_sec}s`}
         </span>
         {last && (
           <span className="text-xs text-neutral-400">

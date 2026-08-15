@@ -1,6 +1,7 @@
 // AI 训练计划解析: 任意格式的计划文本 (Markdown 表格 / 纯文本列表) → 结构化计划
 import { chatJSON } from "@/lib/ai/client";
 import type { ParsedPlan, Weekday } from "@/lib/types/database";
+import { parseRestSec } from "@/lib/utils/rest";
 
 const SYSTEM = `你是一个训练计划解析器。用户会粘贴一份健身计划(可能是 Markdown 表格、纯文本或混合格式),
 把它解析成结构化 JSON。只输出 JSON, 不要任何解释。
@@ -20,7 +21,7 @@ const SYSTEM = `你是一个训练计划解析器。用户会粘贴一份健身�
           "rep_max": number|null,    // 次数上限, "8–10" 里的 10; 单值时与 rep_min 相同
           "rir_min": number|null,    // RIR 下限, "1–2" 里的 1; 单值 "2" 则为 2
           "rir_max": number|null,    // RIR 上限, "1–2" 里的 2; 单值 "2" 则为 2
-          "rest": string|null,       // 休息时间原文, 如 "2-3分钟" / "60-90秒"
+          "rest_sec": number|null,   // 组间休息秒数, 如 120; 区间取下界
           "cues": string|null,       // 动作要点原文, 尽量完整保留
           "equipment": string|null   // 器材原文
         }
@@ -61,7 +62,7 @@ ${SYSTEM.slice(SYSTEM.indexOf("结构:"), SYSTEM.indexOf("规则:"))}
 - 每个训练日 5-8 个动作, 大肌群复合动作在前, 孤立动作在后
 - target_sets 一般 2-4; 复合动作 rep_min/rep_max 取 6-12, 孤立动作取 10-20
 - rir_min/rir_max: 复合动作 2-3, 孤立动作 1-2
-- rest: 复合动作 "2-3分钟", 孤立动作 "60-90秒"
+- rest_sec: 复合动作 120-180, 孤立动作 60-90; 只给一个数, 单位是秒
 - cues 写具体的动作要点, 针对该动作, 不要写空话
 - 参考用户近期练过的动作与重量, 保持连续性; 若换了场地则选功能相近的替代动作
 - title 要说明该日练什么, 如 "上肢 A，胸 + 背 + 肩"`;
@@ -144,7 +145,7 @@ export function normalizePlan(raw: Partial<ParsedPlan>): ParsedPlan {
               rep_max,
               rir_min,
               rir_max,
-              rest: text(e?.rest),
+              rest_sec: restSecOf(e),
               cues: text(e?.cues),
               equipment: text(e?.equipment),
             };
@@ -166,6 +167,17 @@ export function normalizePlan(raw: Partial<ParsedPlan>): ParsedPlan {
 }
 
 /** 转成范围内的整数, 无法解析或越界返回 null */
+/**
+ * 休息秒数。声明的类型是 number, 但这是模型的输出 ——
+ * 实际可能回 "120"、"2-3分钟", 或者用了改版前的 rest 字段名, 全部兜住。
+ */
+function restSecOf(e: unknown): number | null {
+  const o = e as { rest_sec?: unknown; rest?: unknown } | null | undefined;
+  const v = o?.rest_sec ?? o?.rest;
+  if (typeof v === "number") return clampInt(v, 0, 3600);
+  return parseRestSec(text(v));
+}
+
 function clampInt(v: unknown, min: number, max: number): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Math.round(Number(v));

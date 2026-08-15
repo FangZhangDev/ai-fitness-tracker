@@ -202,7 +202,7 @@ function PlanPreview({ plan, onCancel }: { plan: ParsedPlan; onCancel: () => voi
                     {e.rir_min !== null && (
                       <span className="text-neutral-400">RIR {fmtRange(e.rir_min, e.rir_max)}</span>
                     )}
-                    {e.rest && <span className="text-neutral-400">休息 {e.rest}</span>}
+                    {e.rest_sec && <span className="text-neutral-400">休息 {e.rest_sec}s</span>}
                     {e.equipment && <span className="text-neutral-400">· {e.equipment}</span>}
                   </div>
                   {e.cues && <div className="mt-0.5 text-xs text-neutral-400">{e.cues}</div>}

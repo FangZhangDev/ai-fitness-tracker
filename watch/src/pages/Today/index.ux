@@ -5,7 +5,7 @@
       (versionCode 不变时系统可能不真正覆盖)。
       早期它后面还跟着一个 bootInfo 执行探针, 各屏都稳定后已撤掉。
     -->
-    <text class="ver">v1.3.0</text>
+    <text class="ver">v1.3.1</text>
 
     <!-- ============ 加载中 ============ -->
     <div if="{{ isLoading }}" class="center">

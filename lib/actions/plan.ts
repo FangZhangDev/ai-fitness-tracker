@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/utils/server";
 import { parsePlanText, generatePlan } from "@/lib/ai/plan";
-import { parseRestSec } from "@/lib/utils/rest";
 import type { ParsedPlan, Weekday, WorkoutLogInsert } from "@/lib/types/database";
 
 export type ActionResult = { error?: string };
@@ -126,10 +125,7 @@ export async function savePlan(plan: ParsedPlan, name?: string): Promise<ActionR
       rep_max: e.rep_max,
       rir_min: e.rir_min,
       rir_max: e.rir_max,
-      rest: e.rest,
-      // rest 是人看的自由文本, rest_sec 是手表倒计时用的秒数, 统一在这里派生,
-      // 与 0008 迁移回填历史用的是同一套规则
-      rest_sec: parseRestSec(e.rest),
+      rest_sec: e.rest_sec,
       cues: e.cues,
       equipment: e.equipment,
       sort_order: i,
@@ -211,7 +207,7 @@ export async function duplicatePlan(formData: FormData): Promise<ActionResult> {
           rep_max: e.rep_max,
           rir_min: e.rir_min,
           rir_max: e.rir_max,
-          rest: e.rest,
+          rest_sec: e.rest_sec,
           cues: e.cues,
           equipment: e.equipment,
         })),
@@ -267,9 +263,7 @@ export async function updatePlanExercise(prev: unknown, formData: FormData): Pro
       rep_max: int(formData.get("rep_max")),
       rir_min: int(formData.get("rir_min")),
       rir_max: int(formData.get("rir_max")),
-      rest: str(formData.get("rest")) || null,
-      // 表单里显式填了秒数就用它, 没填就从 rest 文本里解析
-      rest_sec: int(formData.get("rest_sec")) ?? parseRestSec(str(formData.get("rest"))),
+      rest_sec: int(formData.get("rest_sec")),
       cues: str(formData.get("cues")) || null,
       equipment: str(formData.get("equipment")) || null,
     })
@@ -305,8 +299,7 @@ export async function addPlanExercise(prev: unknown, formData: FormData): Promis
     rep_max: int(formData.get("rep_max")),
     rir_min: int(formData.get("rir_min")),
     rir_max: int(formData.get("rir_max")),
-    rest: str(formData.get("rest")) || null,
-    rest_sec: int(formData.get("rest_sec")) ?? parseRestSec(str(formData.get("rest"))),
+    rest_sec: int(formData.get("rest_sec")),
     cues: str(formData.get("cues")) || null,
     equipment: str(formData.get("equipment")) || null,
     sort_order: (last?.sort_order ?? -1) + 1,

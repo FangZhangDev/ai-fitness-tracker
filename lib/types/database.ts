@@ -259,9 +259,7 @@ export type PlanExercise = {
   rep_max: number | null;
   rir_min: number | null;
   rir_max: number | null;
-  /** 人看的自由文本, 如 "2-3分钟" */
-  rest: string | null;
-  /** 手表倒计时用的秒数; 空则手表按 90 秒兜底 (0008 起) */
+  /** 组间休息秒数; 空则手表按 90 秒兜底。0009 起这是唯一的休息时长字段 */
   rest_sec: number | null;
   cues: string | null;
   equipment: string | null;
@@ -287,7 +285,7 @@ export type ParsedPlan = {
       rep_max: number | null;
       rir_min: number | null;
       rir_max: number | null;
-      rest: string | null;
+      rest_sec: number | null;
       cues: string | null;
       equipment: string | null;
     }>;
@@ -351,7 +349,7 @@ export type WatchTodayExercise = {
   rep_max: number | null;
   rir_min: number | null;
   rir_max: number | null;
-  rest: string | null;
+  rest_sec: number | null;
   cues: string | null;
   equipment: string | null;
   // 历史最大重量与最好 1RM (0005 迁移新增)，手表用 max_weight_kg 作为预填默认值
